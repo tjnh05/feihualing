@@ -80,16 +80,30 @@ h1{font-size:25px; letter-spacing:3px; font-weight:700}
 .pool button:hover{border-color:var(--cinnabar); color:var(--cinnabar); transform:translateY(-2px)}
 .pool button.on{background:var(--cinnabar); color:#fff8ec; border-color:var(--cinnabar)}
 
+/* 赛制栏 */
+.matchbar{display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-top:16px}
+.matchinfo{font-size:13px; letter-spacing:1.5px; color:var(--ink-2); font-weight:600}
+.matchinfo b{color:var(--cinnabar); font-size:15px; padding:0 2px}
+.levelpick{display:flex; align-items:center; gap:7px; font-size:11.5px; letter-spacing:1px; color:var(--ink-3)}
+.levelpick select{
+  font-family:inherit; font-size:12.5px; letter-spacing:1px; color:var(--ink-2);
+  background:#fffdf7; border:1px solid var(--line); border-radius:7px;
+  padding:5px 8px; cursor:pointer; outline:none; transition:.16s;
+}
+.levelpick select:hover{border-color:var(--cinnabar)}
+.levelpick select:focus{border-color:var(--cinnabar); box-shadow:0 0 0 3px rgba(178,58,46,.08)}
+
 /* 计分 */
-.score{display:flex; gap:12px; margin:18px 0 14px}
+.score{display:flex; gap:12px; margin:12px 0 14px}
 .side{
   flex:1; background:var(--paper-2); border-radius:10px; padding:10px 15px; border:1px solid transparent;
   transition:.25s;
 }
 .side.active{border-color:var(--gold); background:#fff8e8; box-shadow:0 0 0 3px rgba(201,154,63,.13)}
-.side .who{font-size:11.5px; letter-spacing:2px; color:var(--ink-3); display:flex; justify-content:space-between}
+.side .who{font-size:11.5px; letter-spacing:2px; color:var(--ink-3); display:flex; justify-content:space-between; gap:2px 6px; flex-wrap:wrap}
 .side .num{font-size:27px; font-weight:700; color:var(--ink); line-height:1.3}
 .side .num small{font-size:12px; font-weight:400; color:var(--ink-3); margin-left:4px}
+.hearts{color:var(--cinnabar); letter-spacing:1px; margin-left:6px; font-size:10.5px; vertical-align:1px}
 
 /* 对话 */
 .dialog{
@@ -142,6 +156,9 @@ h1{font-size:25px; letter-spacing:3px; font-weight:700}
 .btn:disabled{background:#c9bba6; box-shadow:0 3px 0 #b3a48f; cursor:not-allowed}
 .btn.ghost{background:transparent; color:var(--ink-2); border:1px solid var(--line); box-shadow:none}
 .btn.ghost:hover{border-color:var(--cinnabar); color:var(--cinnabar); background:rgba(178,58,46,.04)}
+.btn.ghost:disabled{background:transparent; color:#b9ab96; border-color:#e6dbca; box-shadow:none; cursor:not-allowed}
+/* 「它有错」只在电脑说完一句后亮起 */
+#challenge:not(:disabled){color:var(--cinnabar); border-color:rgba(178,58,46,.45); background:rgba(178,58,46,.06)}
 .tools{display:flex; gap:9px; margin-top:12px; flex-wrap:wrap}
 .tools .btn{height:36px; font-size:12.5px; padding:0 15px}
 
@@ -165,7 +182,10 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; backgrou
   h1{font-size:19px; letter-spacing:2px} .lingchar{width:64px;height:64px;font-size:34px}
   .lingzone{gap:12px}
   .bub{font-size:15px; max-width:84%} .score{gap:7px}
-  .side .num{font-size:22px} .pool button{width:33px;height:33px;font-size:16px}
+  .side .num{font-size:22px}
+  /* 30px 一行正好摆 7 个令字，25 个字排 4 行不剩单个 */
+  .pool button{width:30px;height:30px;font-size:15.5px}
+  .tools{gap:7px} .tools .btn{padding:0 12px}
   .seal{width:46px;height:46px;font-size:12px}
   .dialog{max-height:240px}
 }
@@ -197,14 +217,19 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; backgrou
         </div>
       </div>
 
+      <div class="matchbar">
+        <div class="matchinfo" id="matchLabel">第 1 局　0 : 0</div>
+        <label class="levelpick">电脑难度<select id="level"></select></label>
+      </div>
+
       <div class="score">
         <div class="side active" id="sideP">
-          <div class="who"><span>你</span><span id="streakP"></span></div>
+          <div class="who"><span>你<span class="hearts" id="livesP">♥♥♥</span></span><span id="streakP"></span></div>
           <div class="num" id="scoreP">0<small>分</small></div>
         </div>
         <div class="side" id="sideC">
-          <div class="who"><span>电脑 · 诗童</span><span id="streakC"></span></div>
-          <div class="num" id="scoreC">0<small>句</small></div>
+          <div class="who"><span>电脑</span><span id="aiMeta">接 0 · 失误 0</span></div>
+          <div class="num" id="scoreC">0<small>分</small></div>
         </div>
       </div>
 
@@ -215,9 +240,10 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; backgrou
         <button class="btn" id="send">接句</button>
       </div>
       <div class="tools">
-        <button class="btn ghost" id="hint">给我提示</button>
-        <button class="btn ghost" id="restart">换一局</button>
-        <button class="btn ghost" id="giveup">认输</button>
+        <button class="btn ghost" id="hint">提示 3/3</button>
+        <button class="btn ghost" id="challenge" disabled>它有错</button>
+        <button class="btn ghost" id="miss">漏接</button>
+        <button class="btn ghost" id="restart">换令字</button>
       </div>
 
       <div class="over" id="over">
@@ -230,7 +256,8 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; backgrou
 
       <div class="note">
         <b>数据：</b>3076 句，来自 <code>chinese-poetry</code> 的《唐诗三百首》+ 手工整理的宋词名句、部编版小学必背古诗、诗经与汉乐府。原文是繁体，已全部转成简体，否则搜"风"查不到"風"。
-        <br><b>玩法：</b>诗句里要有本局令字。答对得 10 分，连击每次多 2 分。电脑偶尔会"卡壳"，接不上就轮到你。
+        <br><b>玩法：</b>诗句里要有本局令字。答对得 10 分，连击每次多 2 分，接错或要提示会把连击清零。每局 3 条命，接不上点「漏接」，3 次漏接本局判负；三局两胜。
+        <br><b>抓错：</b>电脑会按难度故意"漏字"或"重复"作答。它说完后「它有错」亮起——抓对 +15 分并续上连击，冤枉它扣 10 分，每句只能质疑一次。
       </div>
     </div>
   </div>
@@ -245,6 +272,25 @@ const COMMON = ["月","花","春","山","风","江","水","云","雨","雪",
 
 const GENRE_TAG = ["小学必背","宋词","诗经","汉乐府","建安","魏晋","宋诗"];
 
+// 电脑难度：slip = 想不出来的概率，bad = 故意说错的概率，delay = 思考多久（毫秒）
+const LEVELS = {
+  "初出茅庐": { slip:0.26, bad:0.20, delay:900 },
+  "旗鼓相当": { slip:0.12, bad:0.12, delay:700 },
+  "出口成章": { slip:0.04, bad:0.05, delay:450 },
+};
+const DEFAULT_LEVEL = "旗鼓相当";
+
+const LIVES = 3;              // 一局可以漏接几次
+const HINTS = 3;              // 一局可以要几次提示
+const HINT_COST = 5;          // 每次提示扣几分
+const CHALLENGE_BONUS = 15;   // 抓到电脑出错加几分
+const CHALLENGE_COST = 10;    // 冤枉电脑扣几分
+const ROUNDS_TO_WIN = 2;      // 三局两胜
+
+// 比赛级状态：跨局保留，不随每局重置
+const match = { round:1, my:0, ai:0 };
+let level = DEFAULT_LEVEL;
+
 let state = {};
 
 function poolOf(ch){ return DATA.filter(d => d[0].indexOf(ch) >= 0); }
@@ -257,7 +303,14 @@ function init(lingCh){
   const list = bestPool();
   const ch = lingCh || list[Math.floor(Math.random()*list.length)];
   const pool = poolOf(ch);
-  state = { ch, pool, used:[], usedSet:new Set(), score:0, streak:0, aiCount:0, ended:false };
+  state = {
+    ch, pool,
+    usedSet:new Set(), usedPoems:[],
+    score:0, streak:0, aiCount:0, aiScore:0, slips:0,
+    lives:LIVES, hints:HINTS,
+    aiBad:false, aiBadReason:'',
+    ended:false, matchOver:false
+  };
 
   const lc = document.getElementById('lingChar');
   lc.textContent = ch;
@@ -265,17 +318,18 @@ function init(lingCh){
 
   document.getElementById('lingDesc').innerHTML =
     `本轮诗句里必须含有 <b style="color:var(--cinnabar)">「${ch}」</b>字。诗库中有 <b>${pool.length}</b> 句可用，你说一句，电脑接一句。`;
-  document.getElementById('scoreP').innerHTML = '0<small>分</small>';
-  document.getElementById('scoreC').innerHTML = '0<small>句</small>';
-  document.getElementById('streakP').textContent = '';
   document.getElementById('over').classList.remove('show');
   document.getElementById('answer').disabled = false;
   document.getElementById('send').disabled = false;
   document.getElementById('answer').value = '';
   document.getElementById('answer').placeholder = `输入一句含「${ch}」的诗`;
   document.getElementById('dialog').innerHTML = '';
+  setChallenge(false);
+  syncHint();
   renderPool();
-  addSys(`令字：「${ch}」　请先出句`);
+  syncScore();
+  syncMatch();
+  addSys(`第 ${match.round} 局　令字「${ch}」　请先出句`);
   setActive('p');
   document.getElementById('answer').focus();
 }
@@ -287,9 +341,37 @@ function renderPool(){
     const b = document.createElement('button');
     b.textContent = c;
     if(c === state.ch) b.classList.add('on');
-    b.onclick = ()=> init(c);
+    // 本局已结束时先点「下一局」，别让重开把比分弄乱
+    b.onclick = ()=>{ if(!state.ended) init(c); };
     box.appendChild(b);
   });
+}
+
+// ---------------- 界面同步 ----------------
+
+function syncScore(){
+  document.getElementById('scoreP').innerHTML = `${state.score}<small>分</small>`;
+  document.getElementById('scoreC').innerHTML = `${state.aiScore}<small>分</small>`;
+  document.getElementById('streakP').textContent = state.streak > 1 ? `连击 ×${state.streak}` : '';
+  document.getElementById('livesP').textContent =
+    '♥'.repeat(Math.max(state.lives, 0)) + '♡'.repeat(Math.max(LIVES - state.lives, 0));
+  document.getElementById('aiMeta').textContent = `接 ${state.aiCount} · 失误 ${state.slips}`;
+}
+
+function syncMatch(){
+  document.getElementById('matchLabel').innerHTML =
+    `第 ${match.round} 局　<b>${match.my}</b> : <b>${match.ai}</b>`;
+}
+
+function syncHint(){
+  const btn = document.getElementById('hint');
+  btn.textContent = `提示 ${state.hints}/${HINTS}`;
+  btn.disabled = state.hints <= 0;
+}
+
+// 「它有错」只在电脑说完一句后亮起，点过就暗下去（每句只能质疑一次）
+function setChallenge(on){
+  document.getElementById('challenge').disabled = !on;
 }
 
 function setActive(who){
@@ -352,21 +434,26 @@ function playerTurn(){
   const input = document.getElementById('answer');
   const r = judge(input.value);
   if(!r.ok){
+    state.streak = 0;                              // 接错就把连击断掉
+    syncScore();
     addLine('p', input.value.trim() || '（空）', esc(r.msg), true);
     return;
   }
   state.usedSet.add(r.hit[0]);
+  state.usedPoems.push(r.hit);
   state.streak += 1;
   const gain = 10 + (state.streak - 1) * 2;
   state.score += gain;
   addLine('p', r.hit[0], sourceHtml(r.hit) + `　+${gain} 分`);
-  document.getElementById('scoreP').innerHTML = `${state.score}<small>分</small>`;
-  document.getElementById('streakP').textContent = state.streak > 1 ? `连击 ×${state.streak}` : '';
+  syncScore();
   input.value = '';
   input.disabled = true;
   document.getElementById('send').disabled = true;
+  setChallenge(false);
   setActive('c');
-  setTimeout(aiTurn, 700);
+  // 难度越高，电脑想得越快
+  const conf = LEVELS[level] || LEVELS[DEFAULT_LEVEL];
+  setTimeout(aiTurn, conf.delay);
 }
 
 function remaining(){ return state.pool.filter(d => !state.usedSet.has(d[0])); }
@@ -376,20 +463,50 @@ function aiTurn(){
   const rest = remaining();
   if(rest.length === 0){ finish('诗库见底了'); return; }
 
-  const miss = Math.random() < 0.12 && rest.length > 6;
-  if(miss){
+  const conf = LEVELS[level] || LEVELS[DEFAULT_LEVEL];
+
+  // 难度越低越容易卡壳
+  if(Math.random() < conf.slip && rest.length > 6){
     addSys('电脑一时想不出来……轮到你了');
     setActive('p');
     unlock();
     return;
   }
+
+  state.aiBad = false;
+  state.aiBadReason = '';
+
+  // 故意说错：这样你才有抓错的机会。说错的句子不进已用诗库，也不算电脑得分
+  if(Math.random() < conf.bad){
+    let poem;
+    if(state.usedPoems.length && Math.random() < 0.5){
+      poem = state.usedPoems[Math.floor(Math.random()*state.usedPoems.length)];
+      state.aiBadReason = '重复';
+    }else{
+      const others = DATA.filter(d => d[0].indexOf(state.ch) < 0);
+      poem = others[Math.floor(Math.random()*others.length)];
+      state.aiBadReason = '漏字';
+    }
+    state.aiBad = true;
+    state.aiCount += 1;
+    addLine('c', poem[0], sourceHtml(poem));
+    syncScore();
+    setActive('p');
+    unlock();
+    setChallenge(true);
+    return;
+  }
+
   const pick = rest[Math.floor(Math.random()*rest.length)];
   state.usedSet.add(pick[0]);
+  state.usedPoems.push(pick);
   state.aiCount += 1;
+  state.aiScore += 10;
   addLine('c', pick[0], sourceHtml(pick));
-  document.getElementById('scoreC').innerHTML = `${state.aiCount}<small>句</small>`;
+  syncScore();
   setActive('p');
   unlock();
+  setChallenge(true);
   if(remaining().length === 0) finish('诗库见底了');
 }
 
@@ -401,28 +518,120 @@ function unlock(){
   input.focus();
 }
 
-function finish(why){
+function finish(why, forcedLose){
   if(state.ended) return;
   state.ended = true;
-  document.getElementById('over').classList.add('show');
-  document.getElementById('overTitle').textContent = '本局结束';
-  document.getElementById('overDesc').textContent =
-    `令字「${state.ch}」　你 ${state.score} 分 / 电脑接 ${state.aiCount} 句　·　${why}`;
+
+  // 命还在且分数不低于电脑才算赢；漏接光了或者主动换令字，直接判负
+  const win = !forcedLose && state.lives > 0 && state.score >= state.aiScore;
+  if(win) match.my += 1; else match.ai += 1;
+  syncMatch();
+
   document.getElementById('answer').disabled = true;
   document.getElementById('send').disabled = true;
+  setChallenge(false);
+  document.getElementById('hint').disabled = true;
+
+  document.getElementById('over').classList.add('show');
+  const detail = `令字「${state.ch}」　你 ${state.score} 分 / 电脑 ${state.aiScore} 分　·　${why}`;
+  const title = document.getElementById('overTitle');
+  const again = document.getElementById('again');
+
+  if(match.my >= ROUNDS_TO_WIN || match.ai >= ROUNDS_TO_WIN){
+    state.matchOver = true;
+    title.textContent = match.my > match.ai ? '比赛结束 · 你赢了！' : '比赛结束 · 电脑赢了';
+    document.getElementById('overDesc').textContent =
+      `${detail}　三局两胜　你 ${match.my} : ${match.ai} 电脑`;
+    again.textContent = '再来一场';
+  }else{
+    title.textContent = `第 ${match.round} 局结束 · ${win ? '你胜' : '电脑胜'}`;
+    document.getElementById('overDesc').textContent = detail;
+    again.textContent = '下一局';
+  }
+}
+
+function nextRound(){
+  if(state.matchOver){
+    match.round = 1; match.my = 0; match.ai = 0;
+  }else{
+    match.round += 1;
+  }
+  init();
+}
+
+function useHint(){
+  if(state.ended) return;
+  if(state.hints <= 0){ addSys('本局的提示用完了'); return; }
+  const rest = remaining();
+  if(!rest.length){ addSys('没有可以提示的句子了'); return; }
+  state.hints -= 1;
+  state.score = Math.max(0, state.score - HINT_COST);
+  state.streak = 0;                                // 要了提示，连击断掉
+  const p = rest[Math.floor(Math.random()*rest.length)];
+  addSys(`提示：有一句是「${p[0].slice(0,3)}……」（${p[1]}《${p[2]}》）　-${HINT_COST} 分`);
+  syncHint();
+  syncScore();
+}
+
+function challengeAi(){
+  // 按钮亮着就说明电脑刚说完一句，还没被质疑过
+  if(state.ended || document.getElementById('challenge').disabled) return;
+  setChallenge(false);
+
+  if(state.aiBad){
+    state.slips += 1;
+    state.streak += 1;
+    state.score += CHALLENGE_BONUS;
+    addLine('p', '这句有问题！',
+      `抓到问题：${esc(state.aiBadReason || '这一句不对')}　+${CHALLENGE_BONUS} 分`);
+  }else{
+    state.score = Math.max(0, state.score - CHALLENGE_COST);
+    state.streak = 0;
+    addLine('p', '这句有问题！', `这句其实没问题，冤枉电脑扣 ${CHALLENGE_COST} 分`, true);
+  }
+  syncScore();
+}
+
+function missTurn(){
+  if(state.ended) return;
+  // 电脑还在思考时（输入框被锁）不算漏接，免得连点几下把命扣光
+  if(document.getElementById('answer').disabled) return;
+  state.lives -= 1;
+  state.streak = 0;
+  addSys(`你接不上了……（漏接一次，还剩 ${Math.max(state.lives, 0)} 次）`);
+  syncScore();
+  if(state.lives <= 0){ finish('三次漏接', true); return; }
+  // 少一条命，电脑接着说
+  document.getElementById('answer').disabled = true;
+  document.getElementById('send').disabled = true;
+  setChallenge(false);
+  setActive('c');
+  setTimeout(aiTurn, 500);
 }
 
 document.getElementById('send').onclick = playerTurn;
 document.getElementById('answer').addEventListener('keydown', e=>{ if(e.key==='Enter') playerTurn(); });
-document.getElementById('restart').onclick = ()=> init();
-document.getElementById('again').onclick = ()=> init();
-document.getElementById('giveup').onclick = ()=>{ if(!state.ended) finish('你认输了'); };
-document.getElementById('hint').onclick = ()=>{
+document.getElementById('hint').onclick = useHint;
+document.getElementById('challenge').onclick = challengeAi;
+document.getElementById('miss').onclick = missTurn;
+document.getElementById('again').onclick = nextRound;
+document.getElementById('restart').onclick = ()=>{
   if(state.ended) return;
-  const rest = remaining();
-  if(!rest.length) return;
-  const p = rest[Math.floor(Math.random()*rest.length)];
-  addSys(`提示：有一句是「${p[0].slice(0,3)}……」（${p[1]}《${p[2]}》）`);
+  if(!confirm('现在换令字，这一局算你输，确定吗？')) return;
+  finish('主动换令字', true);
+};
+
+// 难度下拉：切换立刻对本局生效
+const levelSel = document.getElementById('level');
+Object.keys(LEVELS).forEach(k=>{
+  const opt = document.createElement('option');
+  opt.value = k; opt.textContent = k;
+  if(k === DEFAULT_LEVEL) opt.selected = true;
+  levelSel.appendChild(opt);
+});
+levelSel.onchange = ()=>{
+  level = levelSel.value;
+  addSys(`电脑难度：「${level}」`);
 };
 
 document.getElementById('subLine').textContent = `唐诗 + 宋词 + 小学必背 · ${DATA.length} 句 · 离线运行`;

@@ -213,16 +213,41 @@ def source_text(poem):
 merge_user_poems()
 
 
+# 电脑难度：slip = 想不出来的概率，bad = 故意说错的概率，delay = 思考多久（毫秒）
+LEVELS = {
+    "初出茅庐": {"slip": 0.26, "bad": 0.20, "delay": 900},
+    "旗鼓相当": {"slip": 0.12, "bad": 0.12, "delay": 700},
+    "出口成章": {"slip": 0.04, "bad": 0.05, "delay": 450},
+}
+DEFAULT_LEVEL = "旗鼓相当"
+
+LIVES = 3          # 一局可以漏接几次
+HINTS = 3          # 一局可以要几次提示
+HINT_COST = 5      # 每次提示扣几分
+CHALLENGE_BONUS = 15   # 抓到电脑出错加几分
+CHALLENGE_COST = 10    # 冤枉电脑扣几分
+ROUNDS_TO_WIN = 2      # 三局两胜
+
+
 class Game:
     """一局游戏的所有状态和数据"""
 
-    def __init__(self, word):
+    def __init__(self, word, level=DEFAULT_LEVEL):
         self.word = word                    # 本局令字
         self.pool = find_lines(word)        # 所有可用的诗句
         self.used = []                      # 已经用过的句子
+        self.used_poems = []                # 用过的句子（完整记录，电脑"重复"失误要用）
         self.score = 0                      # 我的分数
         self.streak = 0                     # 连击次数
         self.ai_count = 0                   # 电脑接了几句
+        self.ai_score = 0                   # 电脑的分数
+        self.lives = LIVES                  # 还能漏接几次
+        self.hints = HINTS                  # 还能要几次提示
+        self.slips = 0                      # 电脑被抓到几次错
+        self.level = level                  # 本局电脑难度
+        self.ai_bad = False                 # 电脑刚说的这一句有没有问题
+        self.ai_bad_reason = ""             # 问题在哪：漏字 / 重复
+        self.challenged = False             # 这一句是否已经质疑过
         self.over = False                   # 是否结束
 
     def remaining(self):
@@ -265,23 +290,84 @@ class Game:
     def player_answer(self, poem):
         """玩家答对后加分"""
         self.used.append(poem["句"])
+        self.used_poems.append(poem)
         self.streak += 1
         gain = 10 + (self.streak - 1) * 2      # 连击越多分越高
         self.score += gain
         return gain
 
     def ai_answer(self):
-        """电脑接一句。返回 (诗句, 是否成功)"""
+        """电脑接一句。返回 (诗句, 是否成功)
+        电脑可能"想不出来"（直接放行），也可能故意说错（漏字 / 重复），留给玩家抓"""
+        self.ai_bad = False
+        self.ai_bad_reason = ""
+        self.challenged = False
+
         rest = self.remaining()
         if not rest:
             return None, False
-        # 电脑有 12% 的概率"想不出来"，这样游戏才有输有赢
-        if random.random() < 0.12 and len(rest) > 6:
+
+        conf = LEVELS.get(self.level, LEVELS[DEFAULT_LEVEL])
+        # 难度越低越容易卡壳
+        if random.random() < conf["slip"] and len(rest) > 6:
             return None, False
+
+        # 故意说错：这样玩家才有"抓错"的机会。说错的句子不进 used，也不算电脑得分
+        if random.random() < conf["bad"]:
+            if self.used_poems and random.random() < 0.5:
+                poem = random.choice(self.used_poems)
+                self.ai_bad_reason = "重复"
+            else:
+                others = [p for p in POEMS if self.word not in p["句"]]
+                poem = random.choice(others)
+                self.ai_bad_reason = "漏字"
+            self.ai_bad = True
+            self.ai_count += 1
+            return poem, True
+
         poem = random.choice(rest)
         self.used.append(poem["句"])
+        self.used_poems.append(poem)
         self.ai_count += 1
+        self.ai_score += 10
         return poem, True
+
+    def use_hint(self):
+        """用一次提示：扣分、连击清零。返回 (要提示的句子, 说明)"""
+        if self.over:
+            return None, "本局已经结束了"
+        if self.hints <= 0:
+            return None, "本局的提示用完了"
+        rest = self.remaining()
+        if not rest:
+            return None, "没有可以提示的句子了"
+        self.hints -= 1
+        self.score = max(0, self.score - HINT_COST)
+        self.streak = 0
+        return random.choice(rest), ""
+
+    def miss(self):
+        """漏接一次：少一条命，返回剩余命数"""
+        self.lives -= 1
+        self.streak = 0
+        return self.lives
+
+    def challenge(self):
+        """质疑电脑刚说的一句。返回 (是否抓对, 说明, 分数变化)；已质疑过返回 (None, 说明, 0)"""
+        if self.challenged:
+            return None, "这一句已经质疑过了", 0
+        self.challenged = True
+
+        if not self.ai_bad:
+            self.score = max(0, self.score - CHALLENGE_COST)
+            self.streak = 0
+            return False, "这句其实没问题，冤枉电脑扣 %d 分" % CHALLENGE_COST, -CHALLENGE_COST
+
+        self.slips += 1
+        self.streak += 1
+        self.score += CHALLENGE_BONUS
+        reason = self.ai_bad_reason or "这一句不对"
+        return True, "抓到问题：%s，加 %d 分" % (reason, CHALLENGE_BONUS), CHALLENGE_BONUS
 
 
 # ============================================================
@@ -298,6 +384,9 @@ class App:
         root.configure(bg=C_PAPER)
 
         self.game = None
+        self.round_no = 1        # 这是第几局
+        self.my_rounds = 0       # 我赢了几局
+        self.ai_rounds = 0       # 电脑赢了几局
 
         # ---------- 顶部标题 ----------
         top = tk.Frame(root, bg=C_PAPER)
@@ -314,6 +403,11 @@ class App:
         self.count_label = tk.Label(titles, text="", bg=C_PAPER, fg=C_INK3, font=FONT_SMALL)
         self.count_label.pack(anchor="w", pady=(3, 0))
         self.refresh_count()
+
+        # 右上角：三局两胜的总比分
+        self.match_label = tk.Label(top, text="", bg=C_PAPER, fg=C_INK2,
+                                    font=("PingFang SC", 12, "bold"))
+        self.match_label.pack(side="right", anchor="n", pady=(6, 0))
 
         # ---------- 令字区 ----------
         ling_box = tk.Frame(root, bg=C_CARD, highlightbackground=C_LINE, highlightthickness=1)
@@ -344,14 +438,36 @@ class App:
                           command=lambda w=w: self.new_game(w))
             b.pack(side="left", padx=2)
 
+        # 令字区右侧：电脑难度
+        level_box = tk.Frame(ling_box, bg=C_CARD)
+        level_box.pack(side="right", padx=16, pady=14)
+        tk.Label(level_box, text="电脑难度", bg=C_CARD, fg=C_INK3,
+                 font=FONT_SMALL).pack(anchor="e")
+        self.level_var = tk.StringVar(value=DEFAULT_LEVEL)
+        self.level_picker = tk.OptionMenu(level_box, self.level_var, *LEVELS.keys(),
+                                          command=self.change_level)
+        self.level_picker.config(font=("PingFang SC", 12), bg="#fffdf6", fg=C_INK2,
+                                 relief="flat", highlightthickness=0, anchor="w", width=8)
+        self.level_picker["menu"].config(font=FONT_SMALL)
+        self.level_picker.pack(anchor="e", pady=(4, 0))
+
         # ---------- 计分区 ----------
         score_row = tk.Frame(root, bg=C_PAPER)
         score_row.pack(fill="x", padx=26)
 
-        self.p_score = tk.Label(score_row, text="0 分", bg="#efe4d0", fg=C_INK, font=FONT_BIG)
-        self.p_score.pack(side="left", expand=True, fill="x", padx=(0, 6), ipady=8)
-        self.c_score = tk.Label(score_row, text="0 句", bg="#efe4d0", fg=C_INK, font=FONT_BIG)
-        self.c_score.pack(side="left", expand=True, fill="x", padx=(6, 0), ipady=8)
+        self.me_box = tk.Frame(score_row, bg="#efe4d0")
+        self.me_box.pack(side="left", expand=True, fill="x", padx=(0, 6))
+        self.p_score = tk.Label(self.me_box, text="0 分", bg="#efe4d0", fg=C_INK, font=FONT_BIG)
+        self.p_score.pack(pady=(6, 0))
+        self.p_sub = tk.Label(self.me_box, text="", bg="#efe4d0", fg=C_INK3, font=FONT_SMALL)
+        self.p_sub.pack(pady=(0, 6))
+
+        self.ai_box = tk.Frame(score_row, bg="#efe4d0")
+        self.ai_box.pack(side="left", expand=True, fill="x", padx=(6, 0))
+        self.c_score = tk.Label(self.ai_box, text="0 分", bg="#efe4d0", fg=C_INK, font=FONT_BIG)
+        self.c_score.pack(pady=(6, 0))
+        self.c_sub = tk.Label(self.ai_box, text="", bg="#efe4d0", fg=C_INK3, font=FONT_SMALL)
+        self.c_sub.pack(pady=(0, 6))
 
         # ---------- 对话区 ----------
         # 注意：先不 pack，等下面输入区和底部按钮占好位置后再填充剩余空间，
@@ -382,7 +498,18 @@ class App:
         # ---------- 底部按钮 ----------
         bottom = tk.Frame(root, bg=C_PAPER)
         bottom.pack(side="bottom", fill="x", padx=26, pady=(8, 14))
-        for text, cmd in [("给我提示", self.hint), ("换一局", lambda: self.new_game()),
+
+        self.hint_btn = tk.Button(bottom, text="提示 3/3", command=self.hint, bg=C_PAPER,
+                                  fg=C_INK2, font=FONT_SMALL, relief="flat", cursor="hand2")
+        self.hint_btn.pack(side="left", padx=(0, 14))
+
+        # 电脑说完话才能点，抓它的漏字/重复
+        self.challenge_btn = tk.Button(bottom, text="它有错", command=self.challenge, bg=C_PAPER,
+                                       fg=C_RED, font=FONT_SMALL, relief="flat", cursor="hand2",
+                                       state="disabled")
+        self.challenge_btn.pack(side="left", padx=(0, 14))
+
+        for text, cmd in [("漏接", self.give_up), ("换令字", self.restart_round),
                           ("添加诗句", self.add_dialog), ("退出", root.destroy)]:
             tk.Button(bottom, text=text, command=cmd, bg=C_PAPER, fg=C_INK2,
                       font=FONT_SMALL, relief="flat", cursor="hand2").pack(side="left", padx=(0, 14))
@@ -406,21 +533,34 @@ class App:
         """开始新的一局"""
         if word is None:
             word = random.choice(COMMON_WORDS)
-        self.game = Game(word)
+        self.game = Game(word, self.level_var.get())
 
         self.ling_char.config(text=word)
         self.refresh_desc()
         self.entry.config(state="normal", textvariable=None)
         self.entry.delete(0, "end")
         self.send_btn.config(state="normal")
+        self.hint_btn.config(state="normal", text="提示 %d/%d" % (self.game.hints, HINTS))
+        self.challenge_btn.config(state="disabled")
 
         self.dialog.config(state="normal")
         self.dialog.delete("1.0", "end")
         self.dialog.config(state="disabled")
 
         self.update_score()
-        self.write("令字：「%s」　请先出句\n\n" % word, "sys")
+        self.refresh_match()
+        self.write("第 %d 局　令字「%s」　请先出句\n\n" % (self.round_no, word), "sys")
         self.entry.focus_set()
+
+    def refresh_match(self):
+        """右上角的三局两胜比分"""
+        self.match_label.config(text="第 %d 局　%d : %d" % (self.round_no, self.my_rounds, self.ai_rounds))
+
+    def change_level(self, value):
+        """切难度：立刻对本局生效"""
+        if self.game:
+            self.game.level = value
+        self.write("电脑难度：「%s」\n\n" % value, "sys")
 
     def refresh_count(self):
         """顶部副标题里的总句数（玩家添加诗句后会变）"""
@@ -535,40 +675,49 @@ class App:
         win.geometry("+%d+%d" % (max(x, 0), max(y, 0)))
 
     def update_score(self):
-        s = self.game.score
-        streak = "  连击 ×%d" % self.game.streak if self.game.streak > 1 else ""
-        self.p_score.config(text="%d 分%s" % (s, streak))
-        self.c_score.config(text="电脑 %d 句" % self.game.ai_count)
+        g = self.game
+        streak = "连击 ×%d · " % g.streak if g.streak > 1 else ""
+        hearts = "♥" * max(g.lives, 0) + "♡" * max(LIVES - g.lives, 0)
+        self.p_score.config(text="%d 分" % g.score)
+        self.p_sub.config(text="%s漏接 %s" % (streak, hearts))
+        self.c_score.config(text="%d 分" % g.ai_score)
+        self.c_sub.config(text="电脑 · 接 %d 句 · 失误 %d 次" % (g.ai_count, g.slips))
 
     def player_turn(self):
-        if self.game.over:
+        g = self.game
+        if g.over:
             return
         text = self.entry.get()
-        ok, msg, poem = self.game.check(text)
+        ok, msg, poem = g.check(text)
 
         if not ok:
+            g.streak = 0                      # 接错就把连击断掉
+            self.update_score()
             self.write("你：%s\n" % (text if text.strip() else "（空）"), "err")
             self.write("　　%s\n\n" % msg, "meta")
             return
 
-        gain = self.game.player_answer(poem)
+        gain = g.player_answer(poem)
         self.write("你：" + poem["句"] + "\n", "me")
         self.write("　　%s　+%d 分\n\n" % (source_text(poem), gain), "meta")
         self.entry.delete(0, "end")
         self.update_score()
 
-        # 用 after 延迟 0.7 秒再让电脑接，节奏更自然
+        # 用 after 延迟一下再让电脑接，节奏更自然（难度越高想得越快）
         self.entry.config(state="disabled")
         self.send_btn.config(state="disabled")
-        self.root.after(700, self.ai_turn)
+        self.challenge_btn.config(state="disabled")
+        self.root.after(LEVELS.get(g.level, LEVELS[DEFAULT_LEVEL])["delay"], self.ai_turn)
 
     def ai_turn(self):
-        if self.game.over:
+        g = self.game
+        if g.over:
             return
-        poem, success = self.game.ai_answer()
+        poem, success = g.ai_answer()
 
         if not success:
             self.write("电脑一时想不出来……轮到你了\n\n", "sys")
+            self.update_score()
             self.unlock()
             return
 
@@ -576,8 +725,10 @@ class App:
         self.write("　　%s\n\n" % source_text(poem), "meta")
         self.update_score()
         self.unlock()
+        # 给玩家一个"抓错"的机会：抓对了有奖，冤枉它要扣分
+        self.challenge_btn.config(state="normal")
 
-        if not self.game.remaining():
+        if not g.remaining():
             self.finish("诗库见底了")
 
     def unlock(self):
@@ -586,23 +737,104 @@ class App:
         self.entry.focus_set()
 
     def hint(self):
-        if self.game.over:
+        g = self.game
+        if g.over:
             return
-        rest = self.game.remaining()
-        if not rest:
+        p, msg = g.use_hint()
+        if p is None:
+            self.write("提示：%s\n\n" % msg, "sys")
+            self.hint_btn.config(state="disabled")
             return
-        p = random.choice(rest)
-        head = p["句"][:3]
-        self.write("提示：有一句是「%s……」（%s）\n\n" % (head, source_text(p)), "sys")
+        self.write("提示：有一句是「%s……」（%s）　-%d 分\n\n"
+                   % (p["句"][:3], source_text(p), HINT_COST), "sys")
+        self.hint_btn.config(text="提示 %d/%d" % (g.hints, HINTS))
+        if g.hints <= 0:
+            self.hint_btn.config(state="disabled")
+        self.update_score()
 
-    def finish(self, why):
-        self.game.over = True
+    def challenge(self):
+        """点「它有错」：抓电脑的漏字 / 重复答句"""
+        g = self.game
+        if g.over:
+            return
+        ok, msg, delta = g.challenge()
+        if ok is None:
+            self.write("　　%s\n\n" % msg, "meta")
+            return
+
+        if ok:
+            self.write("你：这句有问题！\n", "me")
+            self.write("　　%s　+%d 分\n\n" % (msg, delta), "meta")
+        else:
+            self.write("你：这句有问题！\n", "err")
+            self.write("　　%s\n\n" % msg, "meta")
+
+        self.challenge_btn.config(state="disabled")
+        self.update_score()
+        self.entry.focus_set()
+
+    def give_up(self):
+        """漏接：少一条命，然后让电脑接着出"""
+        g = self.game
+        if g.over:
+            return
+        # 电脑还在想的时候（输入框锁着）不算漏接，免得连点几下把命扣光
+        if str(self.entry.cget("state")) == "disabled":
+            return
+        left = g.miss()
+        self.write("你：接不上了……（漏接一次，还剩 %d 次）\n\n" % max(left, 0), "err")
+        self.update_score()
+        if left <= 0:
+            self.finish("三次漏接")
+            return
         self.entry.config(state="disabled")
         self.send_btn.config(state="disabled")
-        messagebox.showinfo(
-            "本局结束",
-            "令字「%s」\n\n你得了 %d 分，电脑接了 %d 句。\n%s"
-            % (self.game.word, self.game.score, self.game.ai_count, why))
+        self.challenge_btn.config(state="disabled")
+        self.root.after(500, self.ai_turn)
+
+    def restart_round(self):
+        """中途换令字：本局算输，进下一局"""
+        if not self.game or self.game.over:
+            return
+        if not messagebox.askyesno("换令字", "现在换令字，这一局算你输，确定吗？"):
+            return
+        self.finish("主动换令字", forced_lose=True)
+
+    def finish(self, why, forced_lose=False):
+        g = self.game
+        g.over = True
+        self.entry.config(state="disabled")
+        self.send_btn.config(state="disabled")
+        self.challenge_btn.config(state="disabled")
+        self.hint_btn.config(state="disabled")
+
+        # 命还在就比分数；漏接光了或者主动换令字，直接判负
+        my_win = (not forced_lose) and g.lives > 0 and g.score >= g.ai_score
+        if my_win:
+            self.my_rounds += 1
+        else:
+            self.ai_rounds += 1
+        self.refresh_match()
+
+        detail = ("%s\n令字「%s」\n\n你 %d 分　电脑 %d 分\n%s\n\n三局两胜　你 %d : %d 电脑"
+                  % ("本局你胜" if my_win else "本局电脑胜", g.word,
+                     g.score, g.ai_score, why, self.my_rounds, self.ai_rounds))
+        messagebox.showinfo("第 %d 局结束" % self.round_no, detail)
+
+        if self.my_rounds >= ROUNDS_TO_WIN or self.ai_rounds >= ROUNDS_TO_WIN:
+            champion = ("这场对决你赢了！" if self.my_rounds > self.ai_rounds
+                        else "这场对决电脑赢了。")
+            if messagebox.askyesno("比赛结束", "%s\n\n再来一场？" % champion):
+                self.round_no = 1
+                self.my_rounds = 0
+                self.ai_rounds = 0
+                self.new_game()
+            else:
+                self.root.destroy()
+            return
+
+        self.round_no += 1
+        self.new_game()
 
 
 if __name__ == "__main__":
