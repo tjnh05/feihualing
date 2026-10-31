@@ -97,6 +97,16 @@ h1{font-size:25px; letter-spacing:3px; font-weight:700}
 .switch{display:flex; align-items:center; gap:5px; font-size:11.5px; letter-spacing:1px; color:var(--ink-3); cursor:pointer}
 .switch input{accent-color:var(--cinnabar); width:13px; height:13px; cursor:pointer}
 .switch:hover{color:var(--cinnabar)}
+/* 每日挑战 */
+.daily{
+  font-family:inherit; font-size:12.5px; letter-spacing:1.5px; cursor:pointer; white-space:nowrap;
+  border:none; border-radius:100px; padding:8px 18px; color:#fff8ec;
+  background:linear-gradient(135deg,var(--gold),#b8862f); box-shadow:0 3px 0 #99701f;
+  transition:.18s;
+}
+.daily:hover{filter:brightness(1.06)}
+.daily:active{transform:translateY(2px); box-shadow:0 1px 0 #99701f}
+.daily.on{background:linear-gradient(135deg,#8b7355,#6d5a43); box-shadow:0 3px 0 #4f4130}
 
 /* 计分 */
 .score{display:flex; gap:12px; margin:12px 0 14px}
@@ -106,7 +116,13 @@ h1{font-size:25px; letter-spacing:3px; font-weight:700}
 }
 .side.active{border-color:var(--gold); background:#fff8e8; box-shadow:0 0 0 3px rgba(201,154,63,.13)}
 .side .who{font-size:11.5px; letter-spacing:2px; color:var(--ink-3); display:flex; justify-content:space-between; gap:2px 6px; flex-wrap:wrap}
-.side .num{font-size:27px; font-weight:700; color:var(--ink); line-height:1.3}
+.side .num{font-size:27px; font-weight:700; color:var(--ink); line-height:1.3; transform-origin:left center}
+/* 答对时分数跳一下 */
+.num.bump{animation:bump .42s ease}
+@keyframes bump{0%{transform:scale(1)}35%{transform:scale(1.24);color:var(--gold)}100%{transform:scale(1)}}
+/* 双人同机：两边各有个名字 */
+.side .who .nm{font-weight:600; color:var(--ink-2); letter-spacing:1px}
+.side.active .who .nm{color:var(--cinnabar)}
 .side .num small{font-size:12px; font-weight:400; color:var(--ink-3); margin-left:4px}
 .hearts{color:var(--cinnabar); letter-spacing:1px; margin-left:6px; font-size:10.5px; vertical-align:1px}
 .clock{color:var(--cinnabar); font-weight:600; letter-spacing:.5px}
@@ -210,6 +226,7 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; backgrou
       </div>
     </div>
     <div class="badge">网页版 · 双击即可玩</div>
+    <button class="daily" id="daily" title="同一天打开，题目都一样">每日挑战</button>
   </div>
 
   <div class="panel">
@@ -219,7 +236,7 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; backgrou
       <div class="lingzone">
         <div class="lingchar" id="lingChar">月</div>
         <div class="linginfo">
-          <h2>今日令字</h2>
+          <h2 id="lingTitle">今日令字</h2>
           <p id="lingDesc">换一个令字试试 —— 它决定这一局要接的诗句里必须含有的字。</p>
           <div class="pool" id="pool"></div>
         </div>
@@ -228,19 +245,23 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; backgrou
       <div class="matchbar">
         <div class="matchinfo" id="matchLabel">第 1 局　0 : 0</div>
         <div class="rules">
-          <label class="levelpick">电脑难度<select id="level"></select></label>
+          <label class="levelpick">难度<select id="level"></select></label>
+          <label class="levelpick">人设<select id="persona"></select></label>
+          <label class="levelpick">主题<select id="theme"></select></label>
           <label class="switch" title="令字逐轮往后挪，同一位诗人只接一句"><input type="checkbox" id="ya">雅令</label>
           <label class="switch" title="20 秒内接不出就漏接一次"><input type="checkbox" id="tm">限时</label>
+          <label class="switch" title="两个人轮流接，不跟电脑打"><input type="checkbox" id="tp">双人</label>
+          <label class="switch" title="接句、漏接、抓到错误时响一声"><input type="checkbox" id="snd" checked>音效</label>
         </div>
       </div>
 
       <div class="score">
         <div class="side active" id="sideP">
-          <div class="who"><span>你<span class="hearts" id="livesP">♥♥♥</span></span><span id="streakP"></span><span class="clock" id="clockP"></span></div>
+          <div class="who"><span><span class="nm" id="nameP">你</span><span class="hearts" id="livesP">♥♥♥</span></span><span id="streakP"></span><span class="clock" id="clockP"></span></div>
           <div class="num" id="scoreP">0<small>分</small></div>
         </div>
         <div class="side" id="sideC">
-          <div class="who"><span>电脑</span><span id="aiMeta">接 0 · 失误 0</span></div>
+          <div class="who"><span class="nm" id="nameC">电脑</span><span id="aiMeta">接 0 · 失误 0</span></div>
           <div class="num" id="scoreC">0<small>分</small></div>
         </div>
       </div>
@@ -307,14 +328,147 @@ const YA_MIN_POOL = 8;        // 某个字位至少要有这么多句，才敢�
 const AUTHOR_MIN = 12;        // 作者少于这么多位的令字，不启用"同一诗人不重复"
 const TIME_LIMIT = 20;        // 限时模式每回合几秒
 
+// ---------------- 主题限令 / 电脑人设 / 每日挑战 ----------------
+const THEME_ALL = "全部";
+// 体裁是现成的，按主题归并即可。唐诗被拆成了好几种体裁，这里合起来算
+const THEMES = {
+  [THEME_ALL]: null,
+  "唐诗": new Set(["五言绝句", "五言律诗", "五言古诗",
+                   "七言绝句", "七言律诗", "七言古诗", "乐府", "唐诗名篇"]),
+  "宋词": new Set(["宋词", "宋诗"]),
+  "小学必背": new Set(["小学必背"]),
+};
+const THEME_MIN = 4;          // 某令字在主题下少于这么多句，就别硬开这一局
+
+// 人设只约束电脑的选句范围，不影响玩家；顺便换个开场白
+const PERSONAS = {
+  "默认": {},
+  "李白": { genres: THEMES["唐诗"], greet: "酒来！且听某家吟一句。" },
+  "易安": { genres: new Set(["宋词"]), greet: "且听奴家慢慢道来。" },
+  "蒙童": { genres: new Set(["小学必背"]), greet: "先生，这首诗我也会背！" },
+};
+const DEFAULT_PERSONA = "默认";
+
+const DAILY_STORE = "feihualing.daily";   // 每日战绩存在浏览器本地
+
 // 比赛级状态：跨局保留，不随每局重置
 const match = { round:1, my:0, ai:0 };
 let level = DEFAULT_LEVEL;
 
 let state = {};
 let timerId = null;           // 限时模式的 setTimeout 句柄
+let daily = null;             // 正在打的每日挑战，不在挑战里就是 null
 
 function poolOf(ch){ return DATA.filter(d => d[0].indexOf(ch) >= 0); }
+
+// 某个令字的诗句池，按主题限令筛一遍
+function themePool(ch, theme){
+  const pool = poolOf(ch);
+  const kinds = THEMES[theme];
+  if(!kinds) return pool;
+  return pool.filter(d => kinds.has(d[3]));
+}
+
+// 和桌面版一字不差的伪随机：每日挑战靠它复现同一套电脑行为
+class LcgRandom{
+  constructor(seed){ this.state = (seed & 0x7FFFFFFF) || 1; }
+  next(){
+    this.state = (Math.imul(this.state, 1103515245) + 12345) & 0x7FFFFFFF;
+    return this.state;
+  }
+  random(){ return this.next() / 2147483648; }
+  choice(seq){ return seq[this.next() % seq.length]; }
+}
+
+// 平时用 Math.random；每日挑战传了种子就用固定序列
+function rndOf(seed){
+  if(seed === null || seed === undefined){
+    return { random: () => Math.random(),
+             choice: seq => seq[Math.floor(Math.random() * seq.length)] };
+  }
+  return new LcgRandom(seed);
+}
+
+// 把字符串碾成 32 位整数，两端算出来的值一样
+function fnv1a(text){
+  let h = 2166136261;
+  for(let i = 0; i < text.length; i++){
+    h = Math.imul(h ^ text.charCodeAt(i), 16777619) >>> 0;
+  }
+  return h;
+}
+
+function todayKey(){
+  const d = new Date();
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+// 人设得跟主题对得上：唐诗配李白、宋词配易安，配不上就等于白发一句开场白
+function personaFits(name, theme){
+  const kinds = THEMES[theme];
+  const genres = (PERSONAS[name] || {}).genres;
+  if(!kinds || !genres) return true;
+  return [...genres].some(g => kinds.has(g));
+}
+
+// 按日期算出一套固定的今日对局：同一天打开，题目都一样
+function dailyPlan(key){
+  key = key || todayKey();
+  const rnd = new LcgRandom(fnv1a(key));
+  const themes = Object.keys(THEMES);
+  const personas = Object.keys(PERSONAS);
+  let word = COMMON[0], theme = THEME_ALL, got = false;
+  // 抽到的组合得真有句子可接，才作数；抽不中就一直重抽
+  for(let i = 0; i < 60; i++){
+    word = rnd.choice(COMMON);
+    theme = themes[rnd.next() % themes.length];
+    if(themePool(word, theme).length >= THEME_MIN){ got = true; break; }
+  }
+  if(!got){ word = rnd.choice(COMMON); theme = THEME_ALL; }
+  // 抽到的人设跟主题不搭就换成搭得上的，抽的还是同一个随机数，种子不受影响
+  const fits = personas.filter(n => personaFits(n, theme));
+  return { key, word, theme, persona: rnd.choice(fits.length ? fits : personas),
+           seed: rnd.next() };
+}
+
+function loadDaily(){
+  try{ return JSON.parse(localStorage.getItem(DAILY_STORE) || '{}') || {}; }
+  catch(e){ return {}; }
+}
+
+// 记下今日战绩，只留更好的那一次
+function saveDaily(key, record){
+  const all = loadDaily();
+  const old = all[key];
+  if(old && (old.lines || 0) >= (record.lines || 0)) return old;
+  all[key] = record;
+  try{ localStorage.setItem(DAILY_STORE, JSON.stringify(all)); }catch(e){}
+  return record;
+}
+
+// 音效用 WebAudio 现合成，不额外下载音频文件
+let audioCtx = null;
+function beep(kind){
+  try{
+    if(!document.getElementById('snd').checked) return;
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    // 浏览器不给自动播放，第一次得借用户那一下点击把声音放开
+    if(audioCtx.state === 'suspended' && audioCtx.resume) audioCtx.resume();
+    const tones = { ok: [660, 990], miss: [320, 210], challenge: [880, 1320], end: [620, 470] };
+    const pair = tones[kind] || tones.ok;
+    pair.forEach((freq, i) => {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      const t = audioCtx.currentTime + i * 0.09;
+      o.type = 'sine'; o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.12, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(t); o.stop(t + 0.18);
+    });
+  }catch(e){}
+}
 
 function bestPool(){
   return COMMON.filter(c => { const n = poolOf(c).length; return n >= 8; });
@@ -328,32 +482,49 @@ function normalize(s){
 function posOf(text, ch){ return normalize(text).indexOf(ch) + 1; }
 
 // 某个令字在雅令下能递进到第几字、作者够不够多。冷门字自动降级
+// 主题限令会缩池子，所以按主题分开算
 const yaCache = {};
-function yaInfo(ch){
-  if(yaCache[ch]) return yaCache[ch];
-  const pool = poolOf(ch);
+function yaInfo(ch, theme){
+  theme = theme || THEME_ALL;
+  const key = `${ch}|${theme}`;
+  if(yaCache[key]) return yaCache[key];
+  const pool = themePool(ch, theme);
   const counts = {};
   [1,2,3].forEach(n=>{ counts[n] = pool.filter(d => posOf(d[0], ch) >= n).length; });
   let maxPos = 1;
   [2,3].forEach(n=>{ if(counts[n] >= YA_MIN_POOL) maxPos = n; });
   const authors = new Set(pool.map(d => d[1])).size;
   const info = { maxPos, counts, authors, authorOk: authors >= AUTHOR_MIN };
-  yaCache[ch] = info;
+  yaCache[key] = info;
   return info;
 }
 
 function init(lingCh){
   const list = bestPool();
   const ch = lingCh || list[Math.floor(Math.random()*list.length)];
-  const pool = poolOf(ch);
-  const info = yaInfo(ch);
-  const yaOn = document.getElementById('ya').checked;
-  const timeOn = document.getElementById('tm').checked;
+  const themeSel = document.getElementById('theme');
+  const personaSel = document.getElementById('persona');
+  let theme = daily ? daily.theme : themeSel.value;
+  let pool = themePool(ch, theme);
+  // 这个主题下这个字接不了几句，退回全部，别一开局就是死局
+  if(theme !== THEME_ALL && pool.length < THEME_MIN){
+    theme = THEME_ALL;
+    if(!daily) themeSel.value = theme;
+    pool = themePool(ch, theme);
+  }
+  const persona = daily ? daily.persona : personaSel.value;
+  const twoPlayer = daily ? false : document.getElementById('tp').checked;
+  const info = yaInfo(ch, theme);
+  const yaOn = daily ? false : document.getElementById('ya').checked;
+  const timeOn = daily ? false : document.getElementById('tm').checked;
   state = {
-    ch, pool,
+    ch, pool, theme, persona, twoPlayer,
+    rnd: rndOf(daily ? daily.seed : null),
     usedSet:new Set(), usedPoems:[],
     score:0, streak:0, aiCount:0, aiScore:0, slips:0,
     lives:LIVES, hints:HINTS,
+    // 双人同机：甲乙各自一套分、命、提示次数
+    pScores:[0,0], pLives:[LIVES,LIVES], pHints:[HINTS,HINTS], pLines:[0,0], turn:0,
     aiBad:false, aiBadReason:'',
     ended:false, matchOver:false,
     yaLing:yaOn, timed:timeOn,
@@ -380,13 +551,20 @@ function init(lingCh){
   renderPool();
   syncScore();
   syncMatch();
-  addSys(`第 ${match.round} 局　令字「${ch}」　请先出句`);
-  if(yaOn || timeOn){
-    const note = [];
-    if(yaOn) note.push('雅令');
-    if(timeOn) note.push(`限时 ${TIME_LIMIT} 秒`);
-    addSys(`本局启用：${note.join(' · ')}`);
+  if(daily){
+    addSys(`今日挑战　令字「${ch}」`);
+  }else{
+    addSys(`第 ${match.round} 局　令字「${ch}」　${twoPlayer ? '甲先出句' : '请先出句'}`);
   }
+  const note = [];
+  if(yaOn) note.push('雅令');
+  if(timeOn) note.push(`限时 ${TIME_LIMIT} 秒`);
+  if(theme !== THEME_ALL) note.push(`主题「${theme}」`);
+  if(twoPlayer) note.push('双人同机');
+  else if(persona !== DEFAULT_PERSONA) note.push(`对手「${persona}」`);
+  if(note.length) addSys(`本局启用：${note.join(' · ')}`);
+  const greet = (PERSONAS[persona] || {}).greet;
+  if(greet && !twoPlayer) addSys(`${persona}：${greet}`);
   setActive('p');
   document.getElementById('answer').focus();
   startTimer();
@@ -396,6 +574,12 @@ function init(lingCh){
 function syncDesc(){
   const can = playable().length;
   const color = 'var(--cinnabar)';
+  let title = '今日令字';
+  if(state.theme !== THEME_ALL) title += ` · ${state.theme}`;
+  if(state.twoPlayer) title += ` · 轮到${whoName()}`;
+  else if(daily) title += ` · ${daily.key.slice(5)}`;
+  document.getElementById('lingTitle').textContent = title;
+
   let html;
   if(!state.yaLing){
     html = `含 <b style="color:${color}">「${esc(state.ch)}」</b>字即可，现在能接 <b>${can}</b> 句。`;
@@ -422,38 +606,88 @@ function needPos(){
 }
 
 // 还没用过、并且过得了本局规则（字位 / 诗人不重复）的句子
-function playable(){
+// forAi = true 表示这是给电脑挑的，再按人设筛一遍体裁
+function playable(forAi){
   const need = needPos();
-  return state.pool.filter(d=>{
-    if(state.usedSet.has(d[0])) return false;
+  const out = state.pool.filter(d=>{
+    if(state.usedSet.has(normalize(d[0]))) return false;
     if(need > 1 && posOf(d[0], state.ch) < need) return false;
     if(state.authorOk && state.usedAuthors.has(d[1])) return false;
     return true;
   });
+  return forAi ? personaPool(out) : out;
 }
 
+// 按人设缩窄电脑的选句范围；缩完一句不剩就不限体裁，免得它哑火
+function personaPool(rest){
+  const kinds = (PERSONAS[state.persona] || {}).genres;
+  if(!kinds) return rest;
+  const picked = rest.filter(d => kinds.has(d[3]));
+  return picked.length ? picked : rest;
+}
+
+let poolBtns = [];            // 令字按钮，每日挑战里要整批锁上
 function renderPool(){
   const box = document.getElementById('pool');
   box.innerHTML = '';
+  poolBtns = [];
   bestPool().forEach(c=>{
     const b = document.createElement('button');
     b.textContent = c;
     if(c === state.ch) b.classList.add('on');
+    if(daily) b.disabled = true;                 // 题面固定，不给换令字
     // 本局已结束时先点「下一局」，别让重开把比分弄乱
     b.onclick = ()=>{ if(!state.ended) init(c); };
     box.appendChild(b);
+    poolBtns.push(b);
   });
 }
 
 // ---------------- 界面同步 ----------------
 
+function hearts(n){
+  n = Math.max(n, 0);
+  return '♥'.repeat(n) + '♡'.repeat(Math.max(LIVES - n, 0));
+}
+
+// 现在该谁接：单人模式是「你」，双人同机分甲、乙
+function whoName(player){
+  if(!state.twoPlayer) return '你';
+  const idx = (player === undefined || player === null) ? state.turn : player;
+  return idx === 0 ? '甲' : '乙';
+}
+
+function myScore(){ return state.twoPlayer ? state.pScores[state.turn] : state.score; }
+function myHints(){ return state.twoPlayer ? state.pHints[state.turn] : state.hints; }
+
+// 加分扣分都走这里，双人模式下落在当前这一方头上
+function addScore(delta){
+  if(state.twoPlayer){
+    state.pScores[state.turn] = Math.max(0, state.pScores[state.turn] + delta);
+  }else{
+    state.score = Math.max(0, state.score + delta);
+  }
+}
+
 function syncScore(){
-  document.getElementById('scoreP').innerHTML = `${state.score}<small>分</small>`;
-  document.getElementById('scoreC').innerHTML = `${state.aiScore}<small>分</small>`;
-  document.getElementById('streakP').textContent = state.streak > 1 ? `连击 ×${state.streak}` : '';
-  document.getElementById('livesP').textContent =
-    '♥'.repeat(Math.max(state.lives, 0)) + '♡'.repeat(Math.max(LIVES - state.lives, 0));
-  document.getElementById('aiMeta').textContent = `接 ${state.aiCount} · 失误 ${state.slips}`;
+  const p = state.twoPlayer;
+  document.getElementById('nameP').textContent = p ? '甲' : '你';
+  document.getElementById('nameC').textContent = p ? '乙' : '电脑';
+  if(p){
+    document.getElementById('scoreP').innerHTML = `${state.pScores[0]}<small>分</small>`;
+    document.getElementById('scoreC').innerHTML = `${state.pScores[1]}<small>分</small>`;
+    document.getElementById('livesP').textContent = hearts(state.pLives[0]);
+    document.getElementById('streakP').textContent =
+      state.pLines[0] ? `接 ${state.pLines[0]} 句` : '';
+    document.getElementById('aiMeta').textContent =
+      `${hearts(state.pLives[1])} 接 ${state.pLines[1]} 句`;
+  }else{
+    document.getElementById('scoreP').innerHTML = `${state.score}<small>分</small>`;
+    document.getElementById('scoreC').innerHTML = `${state.aiScore}<small>分</small>`;
+    document.getElementById('livesP').textContent = hearts(state.lives);
+    document.getElementById('streakP').textContent = state.streak > 1 ? `连击 ×${state.streak}` : '';
+    document.getElementById('aiMeta').textContent = `接 ${state.aiCount} · 失误 ${state.slips}`;
+  }
   const clock = document.getElementById('clockP');
   const myTurn = !document.getElementById('answer').disabled;   // 只在你的回合才显示秒数
   if(state.timed && !state.ended && myTurn){
@@ -466,14 +700,21 @@ function syncScore(){
 }
 
 function syncMatch(){
+  if(daily){
+    const best = (loadDaily()[daily.key] || {}).lines || 0;
+    document.getElementById('matchLabel').textContent =
+      `今日挑战 ${daily.key.slice(5)}　最佳 ${best} 句`;
+    return;
+  }
   document.getElementById('matchLabel').innerHTML =
     `第 ${match.round} 局　<b>${match.my}</b> : <b>${match.ai}</b>`;
 }
 
 function syncHint(){
   const btn = document.getElementById('hint');
-  btn.textContent = `提示 ${state.hints}/${HINTS}`;
-  btn.disabled = state.hints <= 0;
+  const left = myHints();
+  btn.textContent = `提示 ${left}/${HINTS}`;
+  btn.disabled = left <= 0;
 }
 
 // 「它有错」只在电脑说完一句后亮起，点过就暗下去（每句只能质疑一次）
@@ -482,6 +723,12 @@ function setChallenge(on){
 }
 
 function setActive(who){
+  // 双人同机没有电脑回合，高亮跟着 turn 走
+  if(state.twoPlayer){
+    document.getElementById('sideP').classList.toggle('active', state.turn === 0);
+    document.getElementById('sideC').classList.toggle('active', state.turn === 1);
+    return;
+  }
   document.getElementById('sideP').classList.toggle('active', who==='p');
   document.getElementById('sideC').classList.toggle('active', who==='c');
 }
@@ -500,13 +747,13 @@ function sourceHtml(poem){
   return `${esc(poem[1])}《${esc(poem[2])}》${tag}`;
 }
 
-function addLine(who, text, metaHtml, isErr){
+function addLine(who, text, metaHtml, isErr, name){
   const d = document.getElementById('dialog');
   const row = document.createElement('div');
   row.className = 'row' + (who==='p' ? ' right' : '');
   const ava = document.createElement('div');
   ava.className = 'ava ' + who;
-  ava.textContent = who==='p' ? '你' : '童';
+  ava.textContent = name || (who==='p' ? '你' : '童');
   const bub = document.createElement('div');
   bub.className = 'bub ' + (who==='p'?'p':'c') + (isErr?' err':'');
   const safe = esc(text);
@@ -528,7 +775,8 @@ function judge(input){
     hit = state.pool.find(d => normalize(d[0]).indexOf(clean) >= 0);
   }
   if(!hit) return {ok:false, msg:'诗库里暂时没有这一句，换一句试试', type:'notfound'};
-  if(state.usedSet.has(hit[0])) return {ok:false, msg:'这一句已经用过了，不能重复接', type:'dup'};
+  // 同一句诗可能带着不同标点存了两遍，按去标点的写法算同一句
+  if(state.usedSet.has(normalize(hit[0]))) return {ok:false, msg:'这一句已经用过了，不能重复接', type:'dup'};
 
   // 雅令：字位递进 + 诗人不重复
   const need = needPos();
@@ -548,42 +796,70 @@ function playerTurn(){
   if(!r.ok){
     state.streak = 0;                              // 接错就把连击断掉
     syncScore();
-    addLine('p', input.value.trim() || '（空）', esc(r.msg), true);
+    addLine('p', input.value.trim() || '（空）', esc(r.msg), true, whoName());
     return;
   }
-  state.usedSet.add(r.hit[0]);
+  const who = state.turn;
+  state.usedSet.add(normalize(r.hit[0]));
   state.usedPoems.push(r.hit);
   state.usedAuthors.add(r.hit[1]);
   state.roundNo += 1;                              // 轮次往前走，字位要求跟着变
-  state.streak += 1;
-  const gain = 10 + (state.streak - 1) * 2;
-  state.score += gain;
-  addLine('p', r.hit[0], sourceHtml(r.hit) + `　+${gain} 分`);
+
+  let gain;
+  if(state.twoPlayer){
+    // 两人轮流接，每人每句都是 10 分；换人之后连击从头算
+    state.streak = 0;
+    state.pScores[who] += 10;
+    state.pLines[who] += 1;
+    state.turn = 1 - who;
+    gain = 10;
+  }else{
+    state.streak += 1;
+    gain = 10 + (state.streak - 1) * 2;
+    state.score += gain;
+  }
+
+  addLine('p', r.hit[0], sourceHtml(r.hit) + `　+${gain} 分`, false, whoName(who));
+  beep('ok');
+  bumpScore(who);
   input.value = '';
   input.disabled = true;
   document.getElementById('send').disabled = true;
   setChallenge(false);
-  setActive('c');
   stopTimer();
   syncScore();                                     // 锁了输入再刷，秒数会收掉
   syncDesc();
+
+  if(state.twoPlayer){
+    // 双人同机：稍停一下就让另一方接着接，没有电脑的事
+    setActive('p');
+    setTimeout(unlock, 400);
+    return;
+  }
+  setActive('c');
   // 难度越高，电脑想得越快
   const conf = LEVELS[level] || LEVELS[DEFAULT_LEVEL];
   setTimeout(aiTurn, conf.delay);
+}
+
+// 答对时把这一方的分数放大一下
+function bumpScore(who){
+  const el = document.getElementById(who === 1 ? 'scoreC' : 'scoreP');
+  el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
 }
 
 // 还没用过、并且过得了本局规则的句子（见上面的 playable）
 
 function aiTurn(){
   stopTimer();
-  if(state.ended) return;
-  const rest = playable();
+  if(state.ended || state.twoPlayer) return;
+  const rest = playable(true);
   if(rest.length === 0){ finish('诗库见底了'); return; }
 
   const conf = LEVELS[level] || LEVELS[DEFAULT_LEVEL];
 
   // 难度越低越容易卡壳。能接的句子太少时不再卡壳，免得直接死局
-  if(Math.random() < conf.slip && rest.length > 3){
+  if(state.rnd.random() < conf.slip && rest.length > 3){
     addSys('电脑一时想不出来……轮到你了');
     setActive('p');
     unlock();
@@ -594,7 +870,7 @@ function aiTurn(){
   state.aiBadReason = '';
 
   // 故意说错：这样你才有抓错的机会。说错的句子不进已用诗库，也不算电脑得分
-  if(Math.random() < conf.bad){
+  if(state.rnd.random() < conf.bad){
     const [poem, reason] = wrongPoem();
     state.aiBadReason = reason;
     state.aiBad = true;
@@ -607,8 +883,8 @@ function aiTurn(){
     return;
   }
 
-  const pick = rest[Math.floor(Math.random()*rest.length)];
-  state.usedSet.add(pick[0]);
+  const pick = state.rnd.choice(rest);
+  state.usedSet.add(normalize(pick[0]));
   state.usedPoems.push(pick);
   state.usedAuthors.add(pick[1]);
   state.aiCount += 1;
@@ -624,16 +900,16 @@ function aiTurn(){
 function wrongPoem(){
   const need = needPos();
   if(need > 1){
-    const early = state.pool.filter(d => posOf(d[0], state.ch) < need && !state.usedSet.has(d[0]));
-    if(early.length && Math.random() < 0.4){
-      return [early[Math.floor(Math.random()*early.length)], '位置不对'];
+    const early = state.pool.filter(d => posOf(d[0], state.ch) < need && !state.usedSet.has(normalize(d[0])));
+    if(early.length && state.rnd.random() < 0.4){
+      return [state.rnd.choice(early), '位置不对'];
     }
   }
-  if(state.usedPoems.length && Math.random() < 0.5){
-    return [state.usedPoems[Math.floor(Math.random()*state.usedPoems.length)], '重复'];
+  if(state.usedPoems.length && state.rnd.random() < 0.5){
+    return [state.rnd.choice(state.usedPoems), '重复'];
   }
   const others = DATA.filter(d => normalize(d[0]).indexOf(state.ch) < 0);
-  return [others[Math.floor(Math.random()*others.length)], '漏字'];
+  return [state.rnd.choice(others), '漏字'];
 }
 
 // ---------------- 限时模式 ----------------
@@ -670,7 +946,9 @@ function unlock(){
   input.focus();
   // 玩家回合重新开始计时
   state.timeLeft = TIME_LIMIT;
+  syncHint();          // 双人同机换人后，提示次数是各算各的
   syncScore();
+  syncDesc();
   startTimer();
 }
 
@@ -678,17 +956,21 @@ function finish(why, forcedLose){
   if(state.ended) return;
   state.ended = true;
   stopTimer();
+  beep('end');
+
+  document.getElementById('answer').disabled = true;
+  document.getElementById('send').disabled = true;
+  setChallenge(false);
+  document.getElementById('hint').disabled = true;
+
+  if(daily){ finishDaily(why); return; }
+  if(state.twoPlayer){ finishDual(why, forcedLose); return; }
 
   // 命还在且分数不低于电脑才算赢；漏接光了或者主动换令字，直接判负
   const win = !forcedLose && state.lives > 0 && state.score >= state.aiScore;
   if(win) match.my += 1; else match.ai += 1;
   syncMatch();
   syncScore();                                     // 计时显示要跟着收掉
-
-  document.getElementById('answer').disabled = true;
-  document.getElementById('send').disabled = true;
-  setChallenge(false);
-  document.getElementById('hint').disabled = true;
 
   document.getElementById('over').classList.add('show');
   const detail = `令字「${state.ch}」　你 ${state.score} 分 / 电脑 ${state.aiScore} 分　·　${why}`;
@@ -708,7 +990,52 @@ function finish(why, forcedLose){
   }
 }
 
+// 双人同机收局：先丢光命的输，命都在就比分数
+function dualResult(){
+  const [a, b] = state.pLives;
+  if(a <= 0 && b > 0) return 1;
+  if(b <= 0 && a > 0) return 0;
+  if(a <= 0 && b <= 0) return null;
+  const [sa, sb] = state.pScores;
+  if(sa === sb) return null;
+  return sa > sb ? 0 : 1;
+}
+
+function finishDual(why, forcedLose){
+  let winner = dualResult();
+  if(forcedLose) winner = 1 - state.turn;         // 主动换令字的一方认输
+  const head = winner === null ? '平局' : `${winner === 0 ? '甲' : '乙'}胜`;
+  state.matchOver = true;
+  syncMatch();
+  syncScore();
+  document.getElementById('over').classList.add('show');
+  document.getElementById('overTitle').textContent = `本局${head}`;
+  document.getElementById('overDesc').textContent =
+    `令字「${state.ch}」　甲 ${state.pScores[0]} 分（接 ${state.pLines[0]} 句）/ `
+    + `乙 ${state.pScores[1]} 分（接 ${state.pLines[1]} 句）　·　${why}`;
+  document.getElementById('again').textContent = '再开一局';
+}
+
+function finishDaily(why){
+  const lines = Math.max(state.roundNo - 1, 0);    // 每答对一句 roundNo 就 +1
+  const record = { lines, score: state.score, ai: state.aiScore,
+                   word: state.ch, theme: state.theme, why };
+  const old = loadDaily()[daily.key] || {};
+  const best = saveDaily(daily.key, record);
+  const bestLines = best.lines || 0;
+  syncMatch();
+  syncScore();
+  document.getElementById('over').classList.add('show');
+  document.getElementById('overTitle').textContent = '今日挑战结束';
+  let desc = `令字「${state.ch}」　主题「${state.theme}」　你接 ${lines} 句 ${state.score} 分 / `
+    + `电脑 ${state.aiScore} 分　·　${why}　今日最佳 ${bestLines} 句`;
+  if(lines > (old.lines || 0)) desc += '（刷新纪录）';
+  document.getElementById('overDesc').textContent = desc;
+  document.getElementById('again').textContent = '再打一遍';
+}
+
 function nextRound(){
+  if(daily){ init(daily.word); return; }           // 同一道题还能再打，只记最好的那次
   if(state.matchOver){
     match.round = 1; match.my = 0; match.ai = 0;
   }else{
@@ -719,13 +1046,14 @@ function nextRound(){
 
 function useHint(){
   if(state.ended) return;
-  if(state.hints <= 0){ addSys('本局的提示用完了'); return; }
+  if(myHints() <= 0){ addSys('本局的提示用完了'); return; }
   const rest = playable();
   if(!rest.length){ addSys('没有可以提示的句子了'); return; }
-  state.hints -= 1;
-  state.score = Math.max(0, state.score - HINT_COST);
+  if(state.twoPlayer) state.pHints[state.turn] -= 1;
+  else state.hints -= 1;
+  addScore(-HINT_COST);
   state.streak = 0;                                // 要了提示，连击断掉
-  const p = rest[Math.floor(Math.random()*rest.length)];
+  const p = state.rnd.choice(rest);
   addSys(`提示：有一句是「${p[0].slice(0,3)}……」（${p[1]}《${p[2]}》）　-${HINT_COST} 分`);
   syncHint();
   syncScore();
@@ -733,19 +1061,20 @@ function useHint(){
 
 function challengeAi(){
   // 按钮亮着就说明电脑刚说完一句，还没被质疑过
-  if(state.ended || document.getElementById('challenge').disabled) return;
+  if(state.ended || state.twoPlayer || document.getElementById('challenge').disabled) return;
   setChallenge(false);
 
   if(state.aiBad){
     state.slips += 1;
     state.streak += 1;
     state.score += CHALLENGE_BONUS;
+    beep('challenge');
     addLine('p', '这句有问题！',
-      `抓到问题：${esc(state.aiBadReason || '这一句不对')}　+${CHALLENGE_BONUS} 分`);
+      `抓到问题：${esc(state.aiBadReason || '这一句不对')}　+${CHALLENGE_BONUS} 分`, false, whoName());
   }else{
     state.score = Math.max(0, state.score - CHALLENGE_COST);
     state.streak = 0;
-    addLine('p', '这句有问题！', `这句其实没问题，冤枉电脑扣 ${CHALLENGE_COST} 分`, true);
+    addLine('p', '这句有问题！', `这句其实没问题，冤枉电脑扣 ${CHALLENGE_COST} 分`, true, whoName());
   }
   syncScore();
 }
@@ -755,13 +1084,37 @@ function missTurn(){
   // 电脑还在思考时（输入框被锁）不算漏接，免得连点几下把命扣光
   if(document.getElementById('answer').disabled) return;
   stopTimer();
-  state.lives -= 1;
+  const who = whoName();
+  const input = document.getElementById('answer');
   state.streak = 0;
-  addSys(`你接不上了……（漏接一次，还剩 ${Math.max(state.lives, 0)} 次）`);
+  let left;
+  if(state.twoPlayer){
+    const me = state.turn;
+    state.pLives[me] -= 1;
+    left = state.pLives[me];
+    state.turn = 1 - me;                           // 换另一方接着接
+  }else{
+    state.lives -= 1;
+    left = state.lives;
+  }
+  beep('miss');
+  addSys(`${who}接不上了……（漏接一次，还剩 ${Math.max(left, 0)} 次）`);
+  input.value = '';
   syncScore();
-  if(state.lives <= 0){ finish('三次漏接', true); return; }
+
+  if(state.twoPlayer){
+    // 任一方命丢光就收局，剩下的交给 finish 判谁赢
+    if(Math.min(state.pLives[0], state.pLives[1]) <= 0){ finish(`${who}的命用光了`); return; }
+    input.disabled = true;
+    document.getElementById('send').disabled = true;
+    setChallenge(false);
+    setTimeout(unlock, 400);
+    return;
+  }
+
+  if(left <= 0){ finish('三次漏接', true); return; }
   // 少一条命，电脑接着说
-  document.getElementById('answer').disabled = true;
+  input.disabled = true;
   document.getElementById('send').disabled = true;
   setChallenge(false);
   setActive('c');
@@ -776,39 +1129,105 @@ document.getElementById('miss').onclick = missTurn;
 document.getElementById('again').onclick = nextRound;
 document.getElementById('restart').onclick = ()=>{
   if(state.ended) return;
-  if(!confirm('现在换令字，这一局算你输，确定吗？')) return;
+  const lose = state.twoPlayer ? `算${whoName()}输` : '算你输';
+  if(!confirm(`现在换令字，这一局${lose}，确定吗？`)) return;
   finish('主动换令字', true);
 };
 
-// 难度下拉：切换立刻对本局生效
+// 三个下拉：难度只管电脑水平，人设只管电脑挑什么体裁，主题两边都管
 const levelSel = document.getElementById('level');
-Object.keys(LEVELS).forEach(k=>{
-  const opt = document.createElement('option');
-  opt.value = k; opt.textContent = k;
-  if(k === DEFAULT_LEVEL) opt.selected = true;
-  levelSel.appendChild(opt);
-});
+const personaSel = document.getElementById('persona');
+const themeSel = document.getElementById('theme');
+const yaBox = document.getElementById('ya');
+const tmBox = document.getElementById('tm');
+const tpBox = document.getElementById('tp');
+const sndBox = document.getElementById('snd');
+const dailyBtn = document.getElementById('daily');
+
+function fillSelect(sel, keys, preset){
+  keys.forEach(k=>{
+    const opt = document.createElement('option');
+    opt.value = k; opt.textContent = k;
+    if(k === preset) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+fillSelect(levelSel, Object.keys(LEVELS), DEFAULT_LEVEL);
+fillSelect(personaSel, Object.keys(PERSONAS), DEFAULT_PERSONA);
+fillSelect(themeSel, Object.keys(THEMES), THEME_ALL);
+
 levelSel.onchange = ()=>{
   level = levelSel.value;
   addSys(`电脑难度：「${level}」`);
 };
 
-// 雅令 / 限时开关：勾选会带到下一局，中途切换要从头打这一局
-const yaBox = document.getElementById('ya');
-const tmBox = document.getElementById('tm');
+// 人设不用重开：它只改电脑接下来挑哪一类句子
+personaSel.onchange = ()=>{
+  if(state.twoPlayer || state.ended) return;
+  state.persona = personaSel.value;
+  const greet = (PERSONAS[state.persona] || {}).greet;
+  if(greet) addSys(`${state.persona}：${greet}`);
+};
+
+// 每日挑战期间把题面相关的控件锁上，免得题目被改掉
+function setControls(on){
+  [levelSel, personaSel, themeSel, yaBox, tmBox, tpBox].forEach(el=>{ el.disabled = !on; });
+  poolBtns.forEach(b=>{ b.disabled = !on; });
+}
+
+// 雅令 / 限时 / 双人 / 主题：勾选会带到下一局，中途切换要从头打这一局
 function changeRules(){
-  const ya = yaBox.checked, tm = tmBox.checked;
+  if(daily) return;
+  const want = [yaBox.checked, tmBox.checked, tpBox.checked, themeSel.value];
+  const have = [state.yaLing, state.timed, state.twoPlayer, state.theme];
   // 本局已经结束就不打扰，下一局自然按新规则开局
-  if(state.ended || (state.yaLing === ya && state.timed === tm)){ return; }
+  if(state.ended || want.every((v, i) => v === have[i])) return;
+  const theme = themeSel.value;
+  const pool = themePool(state.ch, theme);
+  if(theme !== state.theme && pool.length < THEME_MIN){
+    // 换个主题就没句子可接了，别让玩家开局就卡死
+    alert(`「${state.ch}」在${theme}里只有 ${pool.length} 句，接不下去。换个主题吧。`);
+    themeSel.value = state.theme;
+    return;
+  }
   if(!confirm('换规则要从头打这一局，总比分保留。确定吗？')){
     yaBox.checked = state.yaLing;
     tmBox.checked = state.timed;
+    tpBox.checked = state.twoPlayer;
+    themeSel.value = state.theme;
     return;
   }
   init(state.ch);
 }
-yaBox.onchange = changeRules;
-tmBox.onchange = changeRules;
+[yaBox, tmBox, tpBox, themeSel].forEach(el=>{ el.onchange = changeRules; });
+
+// 音效：开关本身放一声，让人知道生效了
+sndBox.onchange = ()=>{ if(sndBox.checked) beep('ok'); };
+
+// 每日挑战：同一天打开，题目都一样，成绩只记最好的那次
+dailyBtn.onclick = ()=>{
+  if(daily){
+    daily = null;
+    dailyBtn.classList.remove('on');
+    dailyBtn.textContent = '每日挑战';
+    setControls(true);
+    match.round = 1; match.my = 0; match.ai = 0;
+    init();
+    return;
+  }
+  daily = dailyPlan();
+  dailyBtn.classList.add('on');
+  dailyBtn.textContent = '退出挑战';
+  // 控件先跟题面走，再锁上
+  yaBox.checked = false;
+  tmBox.checked = false;
+  tpBox.checked = false;
+  themeSel.value = daily.theme;
+  personaSel.value = daily.persona;
+  match.round = 1; match.my = 0; match.ai = 0;
+  setControls(false);
+  init(daily.word);
+};
 
 document.getElementById('subLine').textContent = `唐诗 + 宋词 + 小学必背 · ${DATA.length} 句 · 离线运行`;
 init('月');
