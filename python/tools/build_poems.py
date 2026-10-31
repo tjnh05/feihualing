@@ -2,9 +2,10 @@
 build_poems.py —— 构建诗句数据文件（可以反复运行，结果稳定）
 ==============================================================
 做的事情：
-  1. 读取 data/poems.json 里的唐诗底本
+  1. 读取 data/poems_tang_original.json 里的唐诗底本（唐诗三百首）
   2. 清洗：去掉 "(明年一作：年年)" 这类校勘注；把塞了整段的长句拆成短句；过滤超长句
-  3. 合并 extra_poems.py 里手工整理的三批补充数据（小学必背 / 宋词 / 诗经乐府）
+  3. 合并 extra_poems.py 里手工整理的补充数据
+     （小学必背 / 宋词 / 五代词 / 诗经乐府 / 四季名篇 / 唐诗名篇 / 宋诗 / 补遗）
   4. 去重、排序、写出 data/poems.json
   5. 打印质量报告（总数、各类别句数、常用令字覆盖）
 
@@ -15,7 +16,8 @@ import os
 import re
 from collections import Counter
 
-from extra_poems import PRIMARY_SCHOOL, SONG_CI, CLASSICS, SEASONS
+from extra_poems import (PRIMARY_SCHOOL, SONG_CI, SONG_CI_EXTRA, CLASSICS, SEASONS,
+                         TANG_CLASSICS, SONG_SHI, MORE_POEMS)
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # 项目根目录
 DATA_FILE = os.path.join(BASE, "data", "poems.json")
@@ -131,8 +133,10 @@ def main():
     print("唐诗清洗后：", len(tang), "（去掉注解、拆分长句、去重）")
 
     # 2) 合并补充数据
-    extra = normalize(PRIMARY_SCHOOL + SONG_CI + CLASSICS + SEASONS, keep_short=True)
-    print("补充数据：", len(extra), "（小学必背 / 宋词 / 诗经乐府 / 四季名篇）")
+    extra = normalize(PRIMARY_SCHOOL + SONG_CI + SONG_CI_EXTRA + CLASSICS + SEASONS
+                      + TANG_CLASSICS + SONG_SHI + MORE_POEMS, keep_short=True)
+    print("补充数据：", len(extra),
+          "（小学必背 / 宋词 / 五代词 / 诗经乐府 / 四季名篇 / 唐诗名篇 / 宋诗 / 补遗）")
 
     # 玩家在界面里自己添的句子，放在最后，不覆盖原名句
     user = load_user_poems()
@@ -147,8 +151,9 @@ def main():
         merged.append(rec)
 
     # 4) 排序：按类别归拢，读起来整齐（自建句排在最后）
-    order = {"小学必背": 0, "宋词": 1, "诗经": 2, "汉乐府": 3, "建安": 4, "魏晋": 5, "宋诗": 6,
-             "唐诗名篇": 7, "自编": 10}
+    order = {"小学必背": 0, "宋词": 1, "五代词": 2, "宋诗": 3,
+             "诗经": 4, "汉乐府": 5, "建安": 6, "魏晋": 7,
+             "唐诗名篇": 8, "自编": 10}
     merged.sort(key=lambda r: (order.get(r["体裁"], 9), len(r["句"])))
 
     with open(DATA_FILE, "w", encoding="utf-8") as f:

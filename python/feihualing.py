@@ -224,7 +224,7 @@ THEMES = {
     THEME_ALL: None,
     "唐诗": {"五言绝句", "五言律诗", "五言古诗",
              "七言绝句", "七言律诗", "七言古诗", "乐府", "唐诗名篇"},
-    "宋词": {"宋词", "宋诗"},
+    "宋词": {"宋词", "宋诗", "五代词"},
     "小学必背": {"小学必背"},
 }
 THEME_MIN = 4          # 某令字在主题下少于这么多句，就别硬开这一局
@@ -233,7 +233,7 @@ THEME_MIN = 4          # 某令字在主题下少于这么多句，就别硬开�
 PERSONAS = {
     "默认": {},
     "李白": {"genres": THEMES["唐诗"], "greet": "酒来！且听某家吟一句。"},
-    "易安": {"genres": {"宋词"}, "greet": "且听奴家慢慢道来。"},
+    "易安": {"genres": THEMES["宋词"], "greet": "且听奴家慢慢道来。"},
     "蒙童": {"genres": {"小学必背"}, "greet": "先生，这首诗我也会背！"},
 }
 DEFAULT_PERSONA = "默认"
@@ -536,6 +536,40 @@ class Game:
                 rest.append(poem)
         return rest
 
+    def match_candidates(self, cleaned):
+        """在池子里找玩家写的是哪一句，按贴合度排出候选
+
+        三种写法都要认：
+          · 整句：去标点以后一模一样
+          · 半句：只写了其中一截，库句更长
+          · 整联 / 整首：把两句甚至整首都贴进来了，库句是输入的一部分
+        最后一种最容易踩坑——玩家照着书抄一整联，库里明明有，以前会误报"诗库没有"
+        """
+        exact = [p for p in self.pool if clean_text(p["句"]) == cleaned]
+        if exact:
+            return exact
+
+        if len(cleaned) >= 5:
+            half = [p for p in self.pool if cleaned in clean_text(p["句"])]
+            if half:
+                return half
+
+        inside = [p for p in self.pool if clean_text(p["句"]) in cleaned]
+        inside.sort(key=lambda p: -len(clean_text(p["句"])))   # 长的更像玩家想接的那句
+        return inside[:8]
+
+    def rule_problem(self, poem):
+        """这句为什么接不了；能接就返回 None"""
+        if clean_text(poem["句"]) in self.used:
+            return "这一句已经用过了，不能重复接"
+        need = self.need_pos()
+        if need > 1 and self.pos_of(poem["句"]) < need:
+            return "这一轮令字要排在第 %d 字或更后，这句排在第 %d 字" % (
+                need, self.pos_of(poem["句"]))
+        if self.author_ok and poem["作者"] in self.used_authors:
+            return "「%s」的诗已经接过了，换个人的" % poem["作者"]
+        return None
+
     def check(self, text):
         """判断玩家输入的诗句对不对
         返回 (是否正确, 说明文字, 找到的那句诗)"""
@@ -546,32 +580,19 @@ class Game:
         if self.word not in cleaned:
             return False, "这一句里没有「%s」字哦" % self.word, None
 
-        # 在诗库里找这一句（玩家可能只写了半句，所以用"包含"来判断）
-        found = None
-        for poem in self.pool:
-            if clean_text(poem["句"]) == cleaned:
-                found = poem
-                break
-        if found is None and len(cleaned) >= 5:
-            for poem in self.pool:
-                if cleaned in clean_text(poem["句"]):
-                    found = poem
-                    break
-
-        if found is None:
+        cands = self.match_candidates(cleaned)
+        if not cands:
             return False, "诗库里暂时没有这一句，换一句试试", None
-        if clean_text(found["句"]) in self.used:
-            return False, "这一句已经用过了，不能重复接", None
 
-        # 雅令：字位递进 + 诗人不重复
-        need = self.need_pos()
-        if need > 1 and self.pos_of(found["句"]) < need:
-            return False, "这一轮令字要排在第 %d 字或更后，这句排在第 %d 字" % (
-                need, self.pos_of(found["句"])), None
-        if self.author_ok and found["作者"] in self.used_authors:
-            return False, "「%s」的诗已经接过了，换个人的" % found["作者"], None
-
-        return True, "", found
+        # 贴了整联就挑其中一句合规矩的用；一句都不行的话，报第一句的原因
+        first_problem = None
+        for poem in cands:
+            problem = self.rule_problem(poem)
+            if problem is None:
+                return True, "", poem
+            if first_problem is None:
+                first_problem = problem
+        return False, first_problem, None
 
     def player_answer(self, poem):
         """玩家答对后加分"""
