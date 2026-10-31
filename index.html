@@ -92,6 +92,11 @@ h1{font-size:25px; letter-spacing:3px; font-weight:700}
 }
 .levelpick select:hover{border-color:var(--cinnabar)}
 .levelpick select:focus{border-color:var(--cinnabar); box-shadow:0 0 0 3px rgba(178,58,46,.08)}
+/* 雅令 / 限时开关 */
+.rules{display:flex; align-items:center; gap:12px; flex-wrap:wrap}
+.switch{display:flex; align-items:center; gap:5px; font-size:11.5px; letter-spacing:1px; color:var(--ink-3); cursor:pointer}
+.switch input{accent-color:var(--cinnabar); width:13px; height:13px; cursor:pointer}
+.switch:hover{color:var(--cinnabar)}
 
 /* 计分 */
 .score{display:flex; gap:12px; margin:12px 0 14px}
@@ -104,6 +109,9 @@ h1{font-size:25px; letter-spacing:3px; font-weight:700}
 .side .num{font-size:27px; font-weight:700; color:var(--ink); line-height:1.3}
 .side .num small{font-size:12px; font-weight:400; color:var(--ink-3); margin-left:4px}
 .hearts{color:var(--cinnabar); letter-spacing:1px; margin-left:6px; font-size:10.5px; vertical-align:1px}
+.clock{color:var(--cinnabar); font-weight:600; letter-spacing:.5px}
+.clock.urgent{color:#8d2b20; animation:blink .9s infinite}
+@keyframes blink{50%{opacity:.35}}
 
 /* 对话 */
 .dialog{
@@ -219,12 +227,16 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; backgrou
 
       <div class="matchbar">
         <div class="matchinfo" id="matchLabel">第 1 局　0 : 0</div>
-        <label class="levelpick">电脑难度<select id="level"></select></label>
+        <div class="rules">
+          <label class="levelpick">电脑难度<select id="level"></select></label>
+          <label class="switch" title="令字逐轮往后挪，同一位诗人只接一句"><input type="checkbox" id="ya">雅令</label>
+          <label class="switch" title="20 秒内接不出就漏接一次"><input type="checkbox" id="tm">限时</label>
+        </div>
       </div>
 
       <div class="score">
         <div class="side active" id="sideP">
-          <div class="who"><span>你<span class="hearts" id="livesP">♥♥♥</span></span><span id="streakP"></span></div>
+          <div class="who"><span>你<span class="hearts" id="livesP">♥♥♥</span></span><span id="streakP"></span><span class="clock" id="clockP"></span></div>
           <div class="num" id="scoreP">0<small>分</small></div>
         </div>
         <div class="side" id="sideC">
@@ -258,6 +270,8 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; backgrou
         <b>数据：</b>3076 句，来自 <code>chinese-poetry</code> 的《唐诗三百首》+ 手工整理的宋词名句、部编版小学必背古诗、诗经与汉乐府。原文是繁体，已全部转成简体，否则搜"风"查不到"風"。
         <br><b>玩法：</b>诗句里要有本局令字。答对得 10 分，连击每次多 2 分，接错或要提示会把连击清零。每局 3 条命，接不上点「漏接」，3 次漏接本局判负；三局两胜。
         <br><b>抓错：</b>电脑会按难度故意"漏字"或"重复"作答。它说完后「它有错」亮起——抓对 +15 分并续上连击，冤枉它扣 10 分，每句只能质疑一次。
+        <br><b>雅令：</b>勾上后令字逐轮往后挪——首轮不限，第 2 轮要排在第 2 字或更后，第 3 轮起要排在第 3 字或更后；同一位诗人只接一句。句数太少的冷门字会自动不递进，作者不够多时也不禁诗人。
+        <br><b>限时：</b>勾上后每回合 <b>20 秒</b>，接不出来就按漏接扣一条命。切换这两项会从头打本局，总比分保留。
       </div>
     </div>
   </div>
@@ -287,11 +301,18 @@ const CHALLENGE_BONUS = 15;   // 抓到电脑出错加几分
 const CHALLENGE_COST = 10;    // 冤枉电脑扣几分
 const ROUNDS_TO_WIN = 2;      // 三局两胜
 
+// 雅令：令字位置逐轮往后挪，同一位诗人只接一句
+const YA_MAX_POS = 3;         // 令字最多递进到第 3 字
+const YA_MIN_POOL = 8;        // 某个字位至少要有这么多句，才敢要求它
+const AUTHOR_MIN = 12;        // 作者少于这么多位的令字，不启用"同一诗人不重复"
+const TIME_LIMIT = 20;        // 限时模式每回合几秒
+
 // 比赛级状态：跨局保留，不随每局重置
 const match = { round:1, my:0, ai:0 };
 let level = DEFAULT_LEVEL;
 
 let state = {};
+let timerId = null;           // 限时模式的 setTimeout 句柄
 
 function poolOf(ch){ return DATA.filter(d => d[0].indexOf(ch) >= 0); }
 
@@ -299,25 +320,54 @@ function bestPool(){
   return COMMON.filter(c => { const n = poolOf(c).length; return n >= 8; });
 }
 
+function normalize(s){
+  return s.replace(/[\s，。、；：！？,.;:!?"'“”‘’（）()《》…—\-·]/g,'');
+}
+
+// 令字在这句里排第几（从 1 数），没有就返回 0
+function posOf(text, ch){ return normalize(text).indexOf(ch) + 1; }
+
+// 某个令字在雅令下能递进到第几字、作者够不够多。冷门字自动降级
+const yaCache = {};
+function yaInfo(ch){
+  if(yaCache[ch]) return yaCache[ch];
+  const pool = poolOf(ch);
+  const counts = {};
+  [1,2,3].forEach(n=>{ counts[n] = pool.filter(d => posOf(d[0], ch) >= n).length; });
+  let maxPos = 1;
+  [2,3].forEach(n=>{ if(counts[n] >= YA_MIN_POOL) maxPos = n; });
+  const authors = new Set(pool.map(d => d[1])).size;
+  const info = { maxPos, counts, authors, authorOk: authors >= AUTHOR_MIN };
+  yaCache[ch] = info;
+  return info;
+}
+
 function init(lingCh){
   const list = bestPool();
   const ch = lingCh || list[Math.floor(Math.random()*list.length)];
   const pool = poolOf(ch);
+  const info = yaInfo(ch);
+  const yaOn = document.getElementById('ya').checked;
+  const timeOn = document.getElementById('tm').checked;
   state = {
     ch, pool,
     usedSet:new Set(), usedPoems:[],
     score:0, streak:0, aiCount:0, aiScore:0, slips:0,
     lives:LIVES, hints:HINTS,
     aiBad:false, aiBadReason:'',
-    ended:false, matchOver:false
+    ended:false, matchOver:false,
+    yaLing:yaOn, timed:timeOn,
+    maxPos: yaOn ? info.maxPos : 1,      // 本令字最多递进到第几字
+    authorOk: yaOn ? info.authorOk : false,
+    roundNo:1,                            // 本局第几轮（我答对几句 + 1）
+    usedAuthors:new Set(),                // 已经接过的诗人
+    timeLeft:TIME_LIMIT
   };
 
   const lc = document.getElementById('lingChar');
   lc.textContent = ch;
   lc.classList.remove('pop'); void lc.offsetWidth; lc.classList.add('pop');
 
-  document.getElementById('lingDesc').innerHTML =
-    `本轮诗句里必须含有 <b style="color:var(--cinnabar)">「${ch}」</b>字。诗库中有 <b>${pool.length}</b> 句可用，你说一句，电脑接一句。`;
   document.getElementById('over').classList.remove('show');
   document.getElementById('answer').disabled = false;
   document.getElementById('send').disabled = false;
@@ -326,12 +376,60 @@ function init(lingCh){
   document.getElementById('dialog').innerHTML = '';
   setChallenge(false);
   syncHint();
+  syncDesc();
   renderPool();
   syncScore();
   syncMatch();
   addSys(`第 ${match.round} 局　令字「${ch}」　请先出句`);
+  if(yaOn || timeOn){
+    const note = [];
+    if(yaOn) note.push('雅令');
+    if(timeOn) note.push(`限时 ${TIME_LIMIT} 秒`);
+    addSys(`本局启用：${note.join(' · ')}`);
+  }
   setActive('p');
   document.getElementById('answer').focus();
+  startTimer();
+}
+
+// 令字下面的说明：本轮的字位要求、还剩多少句能接
+function syncDesc(){
+  const can = playable().length;
+  const color = 'var(--cinnabar)';
+  let html;
+  if(!state.yaLing){
+    html = `含 <b style="color:${color}">「${esc(state.ch)}」</b>字即可，现在能接 <b>${can}</b> 句。`;
+  }else{
+    const parts = [];
+    if(state.maxPos <= 1){
+      parts.push(`「${esc(state.ch)}」句少，字位不递进。`);
+    }else if(needPos() > 1){
+      parts.push(`令字要排在第 <b>${needPos()}</b> 字或更后。`);
+    }else{
+      parts.push(`首轮不限字位，之后逐轮后挪（最多第 ${state.maxPos} 字）。`);
+    }
+    if(state.authorOk) parts.push('同一诗人只接一句。');
+    parts.push(`现在能接 <b>${can}</b> 句。`);
+    html = `雅令：${parts.join('')}`;
+  }
+  document.getElementById('lingDesc').innerHTML = html;
+}
+
+// 这一轮令字至少要排在第几个字（1 = 不限）
+function needPos(){
+  if(!state.yaLing) return 1;
+  return Math.min(state.roundNo, state.maxPos);
+}
+
+// 还没用过、并且过得了本局规则（字位 / 诗人不重复）的句子
+function playable(){
+  const need = needPos();
+  return state.pool.filter(d=>{
+    if(state.usedSet.has(d[0])) return false;
+    if(need > 1 && posOf(d[0], state.ch) < need) return false;
+    if(state.authorOk && state.usedAuthors.has(d[1])) return false;
+    return true;
+  });
 }
 
 function renderPool(){
@@ -356,6 +454,15 @@ function syncScore(){
   document.getElementById('livesP').textContent =
     '♥'.repeat(Math.max(state.lives, 0)) + '♡'.repeat(Math.max(LIVES - state.lives, 0));
   document.getElementById('aiMeta').textContent = `接 ${state.aiCount} · 失误 ${state.slips}`;
+  const clock = document.getElementById('clockP');
+  const myTurn = !document.getElementById('answer').disabled;   // 只在你的回合才显示秒数
+  if(state.timed && !state.ended && myTurn){
+    clock.textContent = `⏱ ${Math.max(state.timeLeft, 0)}s`;
+    clock.classList.toggle('urgent', state.timeLeft <= 5);
+  }else{
+    clock.textContent = '';
+    clock.classList.remove('urgent');
+  }
 }
 
 function syncMatch(){
@@ -409,10 +516,6 @@ function addLine(who, text, metaHtml, isErr){
   d.appendChild(row); d.scrollTop = d.scrollHeight;
 }
 
-function normalize(s){
-  return s.replace(/[\s，。、；：！？,.;:!?"'“”‘’（）()《》…—\-·]/g,'');
-}
-
 function judge(input){
   const raw = input.trim();
   if(!raw) return {ok:false, msg:'先写一句诗吧', type:'empty'};
@@ -426,6 +529,15 @@ function judge(input){
   }
   if(!hit) return {ok:false, msg:'诗库里暂时没有这一句，换一句试试', type:'notfound'};
   if(state.usedSet.has(hit[0])) return {ok:false, msg:'这一句已经用过了，不能重复接', type:'dup'};
+
+  // 雅令：字位递进 + 诗人不重复
+  const need = needPos();
+  if(need > 1 && posOf(hit[0], state.ch) < need){
+    return {ok:false, msg:`这一轮令字要排在第 ${need} 字或更后，这句排在第 ${posOf(hit[0], state.ch)} 字`, type:'pos'};
+  }
+  if(state.authorOk && state.usedAuthors.has(hit[1])){
+    return {ok:false, msg:`「${hit[1]}」的诗已经接过了，换个人的`, type:'author'};
+  }
   return {ok:true, hit};
 }
 
@@ -441,32 +553,37 @@ function playerTurn(){
   }
   state.usedSet.add(r.hit[0]);
   state.usedPoems.push(r.hit);
+  state.usedAuthors.add(r.hit[1]);
+  state.roundNo += 1;                              // 轮次往前走，字位要求跟着变
   state.streak += 1;
   const gain = 10 + (state.streak - 1) * 2;
   state.score += gain;
   addLine('p', r.hit[0], sourceHtml(r.hit) + `　+${gain} 分`);
-  syncScore();
   input.value = '';
   input.disabled = true;
   document.getElementById('send').disabled = true;
   setChallenge(false);
   setActive('c');
+  stopTimer();
+  syncScore();                                     // 锁了输入再刷，秒数会收掉
+  syncDesc();
   // 难度越高，电脑想得越快
   const conf = LEVELS[level] || LEVELS[DEFAULT_LEVEL];
   setTimeout(aiTurn, conf.delay);
 }
 
-function remaining(){ return state.pool.filter(d => !state.usedSet.has(d[0])); }
+// 还没用过、并且过得了本局规则的句子（见上面的 playable）
 
 function aiTurn(){
+  stopTimer();
   if(state.ended) return;
-  const rest = remaining();
+  const rest = playable();
   if(rest.length === 0){ finish('诗库见底了'); return; }
 
   const conf = LEVELS[level] || LEVELS[DEFAULT_LEVEL];
 
-  // 难度越低越容易卡壳
-  if(Math.random() < conf.slip && rest.length > 6){
+  // 难度越低越容易卡壳。能接的句子太少时不再卡壳，免得直接死局
+  if(Math.random() < conf.slip && rest.length > 3){
     addSys('电脑一时想不出来……轮到你了');
     setActive('p');
     unlock();
@@ -478,15 +595,8 @@ function aiTurn(){
 
   // 故意说错：这样你才有抓错的机会。说错的句子不进已用诗库，也不算电脑得分
   if(Math.random() < conf.bad){
-    let poem;
-    if(state.usedPoems.length && Math.random() < 0.5){
-      poem = state.usedPoems[Math.floor(Math.random()*state.usedPoems.length)];
-      state.aiBadReason = '重复';
-    }else{
-      const others = DATA.filter(d => d[0].indexOf(state.ch) < 0);
-      poem = others[Math.floor(Math.random()*others.length)];
-      state.aiBadReason = '漏字';
-    }
+    const [poem, reason] = wrongPoem();
+    state.aiBadReason = reason;
     state.aiBad = true;
     state.aiCount += 1;
     addLine('c', poem[0], sourceHtml(poem));
@@ -500,6 +610,7 @@ function aiTurn(){
   const pick = rest[Math.floor(Math.random()*rest.length)];
   state.usedSet.add(pick[0]);
   state.usedPoems.push(pick);
+  state.usedAuthors.add(pick[1]);
   state.aiCount += 1;
   state.aiScore += 10;
   addLine('c', pick[0], sourceHtml(pick));
@@ -507,7 +618,48 @@ function aiTurn(){
   setActive('p');
   unlock();
   setChallenge(true);
-  if(remaining().length === 0) finish('诗库见底了');
+}
+
+// 故意编一句错的给玩家抓：位置不对 / 重复 / 漏字
+function wrongPoem(){
+  const need = needPos();
+  if(need > 1){
+    const early = state.pool.filter(d => posOf(d[0], state.ch) < need && !state.usedSet.has(d[0]));
+    if(early.length && Math.random() < 0.4){
+      return [early[Math.floor(Math.random()*early.length)], '位置不对'];
+    }
+  }
+  if(state.usedPoems.length && Math.random() < 0.5){
+    return [state.usedPoems[Math.floor(Math.random()*state.usedPoems.length)], '重复'];
+  }
+  const others = DATA.filter(d => normalize(d[0]).indexOf(state.ch) < 0);
+  return [others[Math.floor(Math.random()*others.length)], '漏字'];
+}
+
+// ---------------- 限时模式 ----------------
+
+function startTimer(){
+  stopTimer();
+  if(state.ended || !state.timed) return;
+  timerId = setTimeout(tick, 1000);
+}
+
+function stopTimer(){
+  if(timerId){ clearTimeout(timerId); timerId = null; }
+}
+
+function tick(){
+  timerId = null;
+  if(state.ended || !state.timed) return;
+  state.timeLeft -= 1;
+  if(state.timeLeft <= 0){
+    syncScore();
+    addSys('时间到！这一轮算漏接');
+    missTurn();
+    return;
+  }
+  syncScore();
+  timerId = setTimeout(tick, 1000);
 }
 
 function unlock(){
@@ -516,16 +668,22 @@ function unlock(){
   input.disabled = false;
   document.getElementById('send').disabled = false;
   input.focus();
+  // 玩家回合重新开始计时
+  state.timeLeft = TIME_LIMIT;
+  syncScore();
+  startTimer();
 }
 
 function finish(why, forcedLose){
   if(state.ended) return;
   state.ended = true;
+  stopTimer();
 
   // 命还在且分数不低于电脑才算赢；漏接光了或者主动换令字，直接判负
   const win = !forcedLose && state.lives > 0 && state.score >= state.aiScore;
   if(win) match.my += 1; else match.ai += 1;
   syncMatch();
+  syncScore();                                     // 计时显示要跟着收掉
 
   document.getElementById('answer').disabled = true;
   document.getElementById('send').disabled = true;
@@ -562,7 +720,7 @@ function nextRound(){
 function useHint(){
   if(state.ended) return;
   if(state.hints <= 0){ addSys('本局的提示用完了'); return; }
-  const rest = remaining();
+  const rest = playable();
   if(!rest.length){ addSys('没有可以提示的句子了'); return; }
   state.hints -= 1;
   state.score = Math.max(0, state.score - HINT_COST);
@@ -596,6 +754,7 @@ function missTurn(){
   if(state.ended) return;
   // 电脑还在思考时（输入框被锁）不算漏接，免得连点几下把命扣光
   if(document.getElementById('answer').disabled) return;
+  stopTimer();
   state.lives -= 1;
   state.streak = 0;
   addSys(`你接不上了……（漏接一次，还剩 ${Math.max(state.lives, 0)} 次）`);
@@ -633,6 +792,23 @@ levelSel.onchange = ()=>{
   level = levelSel.value;
   addSys(`电脑难度：「${level}」`);
 };
+
+// 雅令 / 限时开关：勾选会带到下一局，中途切换要从头打这一局
+const yaBox = document.getElementById('ya');
+const tmBox = document.getElementById('tm');
+function changeRules(){
+  const ya = yaBox.checked, tm = tmBox.checked;
+  // 本局已经结束就不打扰，下一局自然按新规则开局
+  if(state.ended || (state.yaLing === ya && state.timed === tm)){ return; }
+  if(!confirm('换规则要从头打这一局，总比分保留。确定吗？')){
+    yaBox.checked = state.yaLing;
+    tmBox.checked = state.timed;
+    return;
+  }
+  init(state.ch);
+}
+yaBox.onchange = changeRules;
+tmBox.onchange = changeRules;
 
 document.getElementById('subLine').textContent = `唐诗 + 宋词 + 小学必背 · ${DATA.length} 句 · 离线运行`;
 init('月');

@@ -197,6 +197,9 @@ def add_poem(raw, author, title, genre):
             POEMS.remove(poem)
         return [], ["写入 %s 失败，请检查文件权限" % os.path.basename(USER_FILE)]
 
+    if added:
+        _YA_CACHE.clear()      # 池子变了，雅令的可行性要重新算
+
     return added, errors
 
 
@@ -211,6 +214,8 @@ def source_text(poem):
 
 
 merge_user_poems()
+
+_YA_CACHE = {}      # 雅令可行性缓存；玩家加了新诗就清掉重算
 
 
 # 电脑难度：slip = 想不出来的概率，bad = 故意说错的概率，delay = 思考多久（毫秒）
@@ -228,11 +233,48 @@ CHALLENGE_BONUS = 15   # 抓到电脑出错加几分
 CHALLENGE_COST = 10    # 冤枉电脑扣几分
 ROUNDS_TO_WIN = 2      # 三局两胜
 
+# ---------------- 雅令（正宗玩法，可选）----------------
+YA_MAX_POS = 3         # 令字位置最多递进到第 3 字
+YA_MIN_POOL = 8        # 某个字位至少要有这么多句，才敢要求它
+AUTHOR_MIN = 12        # 作者少于这么多位的令字，不启用"同一诗人不重复"
+TIME_LIMIT = 20        # 限时模式每回合几秒
+
+
+def ya_info(word):
+    """算出某个令字在雅令下能递进到第几字、作者够不够多
+
+    第 n 轮要求"令字排在第 n 字或更后"，某个字位的句子不够多就降级，
+    最少降到 1（等于不递进）。冷门的「夏」全库只有 10 句，第 2 字往后
+    只剩 6 句，只能留在第 1 轮。
+    """
+    if word in _YA_CACHE:
+        return _YA_CACHE[word]
+
+    pool = find_lines(word)
+    counts = {}
+    for n in (1, 2, 3):
+        counts[n] = sum(1 for p in pool if clean_text(p["句"]).find(word) + 1 >= n)
+
+    max_pos = 1
+    for n in (2, 3):
+        if counts[n] >= YA_MIN_POOL:
+            max_pos = n
+
+    authors = len({p["作者"] for p in pool})
+    info = {
+        "max_pos": max_pos,
+        "counts": counts,
+        "authors": authors,
+        "author_ok": authors >= AUTHOR_MIN,
+    }
+    _YA_CACHE[word] = info
+    return info
+
 
 class Game:
     """一局游戏的所有状态和数据"""
 
-    def __init__(self, word, level=DEFAULT_LEVEL):
+    def __init__(self, word, level=DEFAULT_LEVEL, ya_ling=False, timed=False):
         self.word = word                    # 本局令字
         self.pool = find_lines(word)        # 所有可用的诗句
         self.used = []                      # 已经用过的句子
@@ -245,10 +287,46 @@ class Game:
         self.hints = HINTS                  # 还能要几次提示
         self.slips = 0                      # 电脑被抓到几次错
         self.level = level                  # 本局电脑难度
+        self.ya_ling = ya_ling              # 是否启用雅令（字位递进 + 同一诗人不重复）
+        self.timed = timed                  # 是否限时
+        info = ya_info(word)
+        self.max_pos = info["max_pos"] if ya_ling else 1   # 本令字最多递进到第几字
+        self.author_ok = info["author_ok"] if ya_ling else False
+        self.round_no = 1                   # 本局第几轮（我答对几句 + 1）
+        self.used_authors = set()           # 已经接过的诗人
+        self.time_left = TIME_LIMIT         # 限时模式剩余秒数
         self.ai_bad = False                 # 电脑刚说的这一句有没有问题
-        self.ai_bad_reason = ""             # 问题在哪：漏字 / 重复
+        self.ai_bad_reason = ""             # 问题在哪：漏字 / 重复 / 位置不对
         self.challenged = False             # 这一句是否已经质疑过
         self.over = False                   # 是否结束
+
+    def need_pos(self):
+        """这一轮令字至少要排在第几个字（1 = 不限）"""
+        if not self.ya_ling:
+            return 1
+        return min(self.round_no, self.max_pos)
+
+    def pos_of(self, text):
+        """令字在这句里排第几（从 1 数），没有就返回 0"""
+        return clean_text(text).find(self.word) + 1
+
+    def playable(self):
+        """还没用过、并且过得了本局规则（字位 / 诗人不重复）的句子"""
+        need = self.need_pos()
+        out = []
+        for poem in self.pool:
+            if poem["句"] in self.used:
+                continue
+            if need > 1 and self.pos_of(poem["句"]) < need:
+                continue
+            if self.author_ok and poem["作者"] in self.used_authors:
+                continue
+            out.append(poem)
+        return out
+
+    def mark_used(self, poem):
+        """记下这句的诗人，禁则要用"""
+        self.used_authors.add(poem["作者"])
 
     def remaining(self):
         """还没被用过的诗句"""
@@ -285,42 +363,59 @@ class Game:
         if found["句"] in self.used:
             return False, "这一句已经用过了，不能重复接", None
 
+        # 雅令：字位递进 + 诗人不重复
+        need = self.need_pos()
+        if need > 1 and self.pos_of(found["句"]) < need:
+            return False, "这一轮令字要排在第 %d 字或更后，这句排在第 %d 字" % (
+                need, self.pos_of(found["句"])), None
+        if self.author_ok and found["作者"] in self.used_authors:
+            return False, "「%s」的诗已经接过了，换个人的" % found["作者"], None
+
         return True, "", found
 
     def player_answer(self, poem):
         """玩家答对后加分"""
         self.used.append(poem["句"])
         self.used_poems.append(poem)
+        self.mark_used(poem)
+        self.round_no += 1
         self.streak += 1
         gain = 10 + (self.streak - 1) * 2      # 连击越多分越高
         self.score += gain
         return gain
 
+    def wrong_answer(self, rest):
+        """故意编一句错的给玩家抓：位置不对 / 重复 / 漏字"""
+        need = self.need_pos()
+        if need > 1:
+            early = [p for p in self.pool
+                     if self.pos_of(p["句"]) < need and p["句"] not in self.used]
+            if early and random.random() < 0.4:
+                return random.choice(early), "位置不对"
+        if self.used_poems and random.random() < 0.5:
+            return random.choice(self.used_poems), "重复"
+        others = [p for p in POEMS if self.word not in p["句"]]
+        return random.choice(others), "漏字"
+
     def ai_answer(self):
         """电脑接一句。返回 (诗句, 是否成功)
-        电脑可能"想不出来"（直接放行），也可能故意说错（漏字 / 重复），留给玩家抓"""
+        电脑可能"想不出来"（直接放行），也可能故意说错（漏字 / 重复 / 位置不对），留给玩家抓"""
         self.ai_bad = False
         self.ai_bad_reason = ""
         self.challenged = False
 
-        rest = self.remaining()
+        rest = self.playable()
         if not rest:
             return None, False
 
         conf = LEVELS.get(self.level, LEVELS[DEFAULT_LEVEL])
-        # 难度越低越容易卡壳
-        if random.random() < conf["slip"] and len(rest) > 6:
+        # 难度越低越容易卡壳。能接的句子太少时不再卡壳，免得直接死局
+        if random.random() < conf["slip"] and len(rest) > 3:
             return None, False
 
         # 故意说错：这样玩家才有"抓错"的机会。说错的句子不进 used，也不算电脑得分
         if random.random() < conf["bad"]:
-            if self.used_poems and random.random() < 0.5:
-                poem = random.choice(self.used_poems)
-                self.ai_bad_reason = "重复"
-            else:
-                others = [p for p in POEMS if self.word not in p["句"]]
-                poem = random.choice(others)
-                self.ai_bad_reason = "漏字"
+            poem, self.ai_bad_reason = self.wrong_answer(rest)
             self.ai_bad = True
             self.ai_count += 1
             return poem, True
@@ -328,6 +423,7 @@ class Game:
         poem = random.choice(rest)
         self.used.append(poem["句"])
         self.used_poems.append(poem)
+        self.mark_used(poem)
         self.ai_count += 1
         self.ai_score += 10
         return poem, True
@@ -338,7 +434,7 @@ class Game:
             return None, "本局已经结束了"
         if self.hints <= 0:
             return None, "本局的提示用完了"
-        rest = self.remaining()
+        rest = self.playable()
         if not rest:
             return None, "没有可以提示的句子了"
         self.hints -= 1
@@ -380,10 +476,11 @@ class App:
         root.title("诗词飞花令 · 人机对战")
         root.geometry("880x780")
         # 窗口不能被拖得太小，否则输入框和按钮会被挤没
-        root.minsize(720, 600)
+        root.minsize(720, 680)
         root.configure(bg=C_PAPER)
 
         self.game = None
+        self.timer_id = None     # 限时模式的 after 句柄
         self.round_no = 1        # 这是第几局
         self.my_rounds = 0       # 我赢了几局
         self.ai_rounds = 0       # 电脑赢了几局
@@ -420,7 +517,8 @@ class App:
         info = tk.Frame(ling_box, bg=C_CARD)
         info.pack(side="left", fill="both", expand=True, pady=10)
         tk.Label(info, text="今日令字", bg=C_CARD, fg=C_INK, font=("PingFang SC", 13, "bold")).pack(anchor="w")
-        self.ling_desc = tk.Label(info, text="", bg=C_CARD, fg=C_INK3, font=FONT_SMALL, justify="left")
+        self.ling_desc = tk.Label(info, text="", bg=C_CARD, fg=C_INK3, font=FONT_SMALL,
+                                  justify="left", wraplength=350)
         self.ling_desc.pack(anchor="w", pady=(4, 6))
 
         # 令字按钮：25 个字分三排显示
@@ -451,6 +549,18 @@ class App:
         self.level_picker["menu"].config(font=FONT_SMALL)
         self.level_picker.pack(anchor="e", pady=(4, 0))
 
+        # 难度下面挂两个玩法开关：勾了就按雅令/限时的规矩打
+        rules = tk.Frame(level_box, bg=C_CARD)
+        rules.pack(anchor="e", pady=(8, 0))
+        self.ya_var = tk.BooleanVar(value=False)
+        self.time_var = tk.BooleanVar(value=False)
+        for text, var in (("雅令", self.ya_var), ("限时", self.time_var)):
+            tk.Checkbutton(rules, text=text, variable=var, command=self.change_rules,
+                           bg=C_CARD, fg=C_INK2, font=FONT_SMALL, relief="flat",
+                           activebackground=C_CARD, activeforeground=C_INK,
+                           selectcolor="#fffdf6", highlightthickness=0,
+                           cursor="hand2").pack(anchor="w")
+
         # ---------- 计分区 ----------
         score_row = tk.Frame(root, bg=C_PAPER)
         score_row.pack(fill="x", padx=26)
@@ -459,8 +569,12 @@ class App:
         self.me_box.pack(side="left", expand=True, fill="x", padx=(0, 6))
         self.p_score = tk.Label(self.me_box, text="0 分", bg="#efe4d0", fg=C_INK, font=FONT_BIG)
         self.p_score.pack(pady=(6, 0))
-        self.p_sub = tk.Label(self.me_box, text="", bg="#efe4d0", fg=C_INK3, font=FONT_SMALL)
-        self.p_sub.pack(pady=(0, 6))
+        p_sub_row = tk.Frame(self.me_box, bg="#efe4d0")
+        p_sub_row.pack(pady=(0, 6))
+        self.p_sub = tk.Label(p_sub_row, text="", bg="#efe4d0", fg=C_INK3, font=FONT_SMALL)
+        self.p_sub.pack(side="left")
+        self.clock_label = tk.Label(p_sub_row, text="", bg="#efe4d0", fg=C_INK3, font=FONT_SMALL)
+        self.clock_label.pack(side="left")
 
         self.ai_box = tk.Frame(score_row, bg="#efe4d0")
         self.ai_box.pack(side="left", expand=True, fill="x", padx=(6, 0))
@@ -533,7 +647,8 @@ class App:
         """开始新的一局"""
         if word is None:
             word = random.choice(COMMON_WORDS)
-        self.game = Game(word, self.level_var.get())
+        self.stop_timer()
+        self.game = Game(word, self.level_var.get(), self.ya_var.get(), self.time_var.get())
 
         self.ling_char.config(text=word)
         self.refresh_desc()
@@ -549,8 +664,31 @@ class App:
 
         self.update_score()
         self.refresh_match()
-        self.write("第 %d 局　令字「%s」　请先出句\n\n" % (self.round_no, word), "sys")
+        self.write("第 %d 局　令字「%s」　请先出句\n" % (self.round_no, word), "sys")
+        if self.game.ya_ling or self.game.timed:
+            note = []
+            if self.game.ya_ling:
+                note.append("雅令")
+            if self.game.timed:
+                note.append("限时 %d 秒" % TIME_LIMIT)
+            self.write("本局启用：%s\n" % " · ".join(note), "sys")
+        self.write("\n")
         self.entry.focus_set()
+        self.start_timer()
+
+    def change_rules(self):
+        """切换雅令 / 限时：规则变了只能重开本局，总比分保留"""
+        g = self.game
+        if g is None:
+            return
+        ya, timed = self.ya_var.get(), self.time_var.get()
+        if g.ya_ling == ya and g.timed == timed:
+            return
+        if not messagebox.askyesno("切换玩法", "换规则要从头打这一局，总比分保留。确定吗？"):
+            self.ya_var.set(g.ya_ling)          # 取消就把勾选退回去
+            self.time_var.set(g.timed)
+            return
+        self.new_game(g.word)
 
     def refresh_match(self):
         """右上角的三局两胜比分"""
@@ -567,10 +705,54 @@ class App:
         self.count_label.config(text="唐诗 + 宋词 + 小学必背 + 自建 · %d 句 · 离线运行" % len(POEMS))
 
     def refresh_desc(self):
-        """令字下面的说明：本轮还有多少句可以接"""
-        self.ling_desc.config(
-            text="本轮诗句里必须含有「%s」字。诗库中有 %d 句可用，你说一句，电脑接一句。"
-                 % (self.game.word, len(self.game.pool)))
+        """令字下面的说明：本轮的字位要求、还剩多少句能接"""
+        g = self.game
+        can = len(g.playable())
+        if not g.ya_ling:
+            text = "含「%s」字即可，现在能接 %d 句。" % (g.word, can)
+        else:
+            parts = []
+            if g.max_pos <= 1:
+                parts.append("「%s」句少，字位不递进。" % g.word)
+            elif g.need_pos() > 1:
+                parts.append("令字要排在第 %d 字或更后。" % g.need_pos())
+            else:
+                parts.append("首轮不限字位，之后逐轮后挪（最多第 %d 字）。" % g.max_pos)
+            if g.author_ok:
+                parts.append("同一诗人只接一句。")
+            parts.append("现在能接 %d 句。" % can)
+            text = "雅令：" + "".join(parts)
+        self.ling_desc.config(text=text)
+
+    # ---------------- 限时模式 ----------------
+
+    def start_timer(self):
+        """玩家回合开始倒计时；没开限时就不动"""
+        self.stop_timer()
+        g = self.game
+        if g is None or g.over or not g.timed:
+            return
+        self.timer_id = self.root.after(1000, self.tick)
+
+    def stop_timer(self):
+        if self.timer_id is not None:
+            self.root.after_cancel(self.timer_id)
+            self.timer_id = None
+
+    def tick(self):
+        """每秒掉一格，掉光算漏接"""
+        self.timer_id = None
+        g = self.game
+        if g is None or g.over or not g.timed:
+            return
+        g.time_left -= 1
+        if g.time_left <= 0:
+            self.update_score()
+            self.write("时间到！这一轮算漏接\n\n", "err")
+            self.give_up()
+            return
+        self.update_score()
+        self.timer_id = self.root.after(1000, self.tick)
 
     def absorb(self, poems):
         """新加的诗句马上参与当前这一局，返回其中含令字的句数"""
@@ -682,6 +864,11 @@ class App:
         self.p_sub.config(text="%s漏接 %s" % (streak, hearts))
         self.c_score.config(text="%d 分" % g.ai_score)
         self.c_sub.config(text="电脑 · 接 %d 句 · 失误 %d 次" % (g.ai_count, g.slips))
+        # 倒计时只在你的回合显示，最后 5 秒变红
+        running = g.timed and str(self.entry.cget("state")) == "normal"
+        self.clock_label.config(
+            text="　⏱ %ds" % max(g.time_left, 0) if running else "",
+            fg=C_RED if running and g.time_left <= 5 else C_INK3)
 
     def player_turn(self):
         g = self.game
@@ -701,17 +888,25 @@ class App:
         self.write("你：" + poem["句"] + "\n", "me")
         self.write("　　%s　+%d 分\n\n" % (source_text(poem), gain), "meta")
         self.entry.delete(0, "end")
-        self.update_score()
-
-        # 用 after 延迟一下再让电脑接，节奏更自然（难度越高想得越快）
+        # 先把输入锁上再刷分数，倒计时的秒数才会跟着收掉
         self.entry.config(state="disabled")
         self.send_btn.config(state="disabled")
         self.challenge_btn.config(state="disabled")
+        self.stop_timer()
+        self.update_score()
+        self.refresh_desc()          # 轮次变了，字位要求跟着变
+
+        # 用 after 延迟一下再让电脑接，节奏更自然（难度越高想得越快）
         self.root.after(LEVELS.get(g.level, LEVELS[DEFAULT_LEVEL])["delay"], self.ai_turn)
 
     def ai_turn(self):
         g = self.game
+        self.stop_timer()
         if g.over:
+            return
+        # 合规的句子接光了，这局没法往下走
+        if not g.playable():
+            self.finish("诗库见底了")
             return
         poem, success = g.ai_answer()
 
@@ -728,13 +923,14 @@ class App:
         # 给玩家一个"抓错"的机会：抓对了有奖，冤枉它要扣分
         self.challenge_btn.config(state="normal")
 
-        if not g.remaining():
-            self.finish("诗库见底了")
-
     def unlock(self):
         self.entry.config(state="normal")
         self.send_btn.config(state="normal")
         self.entry.focus_set()
+        # 玩家回合重新开始计时
+        self.game.time_left = TIME_LIMIT
+        self.update_score()
+        self.start_timer()
 
     def hint(self):
         g = self.game
@@ -781,6 +977,7 @@ class App:
         # 电脑还在想的时候（输入框锁着）不算漏接，免得连点几下把命扣光
         if str(self.entry.cget("state")) == "disabled":
             return
+        self.stop_timer()
         left = g.miss()
         self.write("你：接不上了……（漏接一次，还剩 %d 次）\n\n" % max(left, 0), "err")
         self.update_score()
@@ -803,6 +1000,7 @@ class App:
     def finish(self, why, forced_lose=False):
         g = self.game
         g.over = True
+        self.stop_timer()
         self.entry.config(state="disabled")
         self.send_btn.config(state="disabled")
         self.challenge_btn.config(state="disabled")
