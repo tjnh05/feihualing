@@ -364,10 +364,11 @@ def play_sound(kind):
 
 
 # 电脑难度：slip = 想不出来的概率，bad = 故意说错的概率，delay = 思考多久（毫秒）
+# time = 限时模式下每回合给几秒。打字慢就选低难度，反正它本来就笨一点
 LEVELS = {
-    "初出茅庐": {"slip": 0.26, "bad": 0.20, "delay": 900},
-    "旗鼓相当": {"slip": 0.12, "bad": 0.12, "delay": 700},
-    "出口成章": {"slip": 0.04, "bad": 0.05, "delay": 450},
+    "初出茅庐": {"slip": 0.26, "bad": 0.20, "delay": 900, "time": 40},
+    "旗鼓相当": {"slip": 0.12, "bad": 0.12, "delay": 700, "time": 30},
+    "出口成章": {"slip": 0.04, "bad": 0.05, "delay": 450, "time": 20},
 }
 DEFAULT_LEVEL = "旗鼓相当"
 
@@ -382,7 +383,7 @@ ROUNDS_TO_WIN = 2      # 三局两胜
 YA_MAX_POS = 3         # 令字位置最多递进到第 3 字
 YA_MIN_POOL = 8        # 某个字位至少要有这么多句，才敢要求它
 AUTHOR_MIN = 12        # 作者少于这么多位的令字，不启用"同一诗人不重复"
-TIME_LIMIT = 20        # 限时模式每回合几秒
+# 限时每回合给几秒跟着难度走，见上面 LEVELS 里的 time
 
 
 def ya_info(word, theme=THEME_ALL):
@@ -446,7 +447,8 @@ class Game:
         self.author_ok = info["author_ok"] if ya_ling else False
         self.round_no = 1                   # 本局第几轮（我答对几句 + 1）
         self.used_authors = set()           # 已经接过的诗人
-        self.time_left = TIME_LIMIT         # 限时模式剩余秒数
+        self.time_limit = LEVELS.get(level, LEVELS[DEFAULT_LEVEL])["time"]   # 限时每回合几秒
+        self.time_left = self.time_limit    # 限时模式剩余秒数
         self.ai_bad = False                 # 电脑刚说的这一句有没有问题
         self.ai_bad_reason = ""             # 问题在哪：漏字 / 重复 / 位置不对
         self.challenged = False             # 这一句是否已经质疑过
@@ -593,6 +595,27 @@ class Game:
             if first_problem is None:
                 first_problem = problem
         return False, first_problem, None
+
+    def preview(self, text):
+        """输入时的即时提示：返回 (提示文字, 状态)，状态是 ok / warn / idle
+
+        和 check 的区别只在一处：够 5 个字还认不出来才算真打错，短于 5 字
+        只说"再多打几个字"。不然刚打一半就报"诗库里没有"，比不提示还吓人。
+        """
+        cleaned = clean_text(text)
+        if self.word not in cleaned:
+            return "这一句里还没有「%s」字" % self.word, "idle"
+
+        cands = self.match_candidates(cleaned)
+        if not cands:
+            if len(cleaned) < 5:
+                return "再打几个字就能认出来了", "idle"
+            return "诗库里没有这一句，看看有没有打错字", "warn"
+
+        for poem in cands:
+            if self.rule_problem(poem) is None:
+                return "认得这一句", "ok"
+        return self.rule_problem(cands[0]) or "这一句接不了", "warn"
 
     def player_answer(self, poem):
         """玩家答对后加分"""
@@ -873,6 +896,7 @@ class App:
                               relief="flat", highlightbackground=C_LINE, highlightthickness=1)
         self.entry.pack(side="left", fill="x", expand=True, ipady=9)
         self.entry.bind("<Return>", lambda e: self.player_turn())
+        self.entry.bind("<KeyRelease>", self.echo_hint)
 
         self.send_btn = tk.Button(input_row, text="接 句", command=self.player_turn,
                                   bg=C_RED, fg="#fff8ec", font=("PingFang SC", 14, "bold"),
@@ -898,6 +922,11 @@ class App:
             tk.Button(bottom, text=text, command=cmd, bg=C_PAPER, fg=C_INK2,
                       font=FONT_SMALL, relief="flat", cursor="hand2").pack(side="left", padx=(0, 14))
 
+        # 输入框下面这一行：边打边提示认不认得出这句，省得按下回车才发现打错字
+        self.echo = tk.Label(root, text="", bg=C_PAPER, fg=C_INK3, font=FONT_SMALL,
+                             anchor="w", height=1)
+        self.echo.pack(side="bottom", fill="x", padx=28)
+
         # 底部固定件先占位（side="bottom" 从下往上叠），对话区最后吃掉剩余空间
         input_row.pack(side="bottom", fill="x", padx=26, pady=(6, 0))
         self.dialog.pack(side="top", fill="both", expand=True, padx=26, pady=10)
@@ -912,6 +941,16 @@ class App:
         self.dialog.insert("end", text, tag)
         self.dialog.see("end")
         self.dialog.config(state="disabled")
+
+    def echo_hint(self, event=None):
+        """边打边提示：只回答"认不认"，不进分数，也不替玩家按回车"""
+        g = self.game
+        text = self.entry.get() if g is not None else ""
+        if g is None or g.over or not text.strip():
+            self.echo.config(text="")
+            return
+        msg, kind = g.preview(text)
+        self.echo.config(text=msg, fg={"ok": C_JADE, "warn": C_RED}.get(kind, C_INK3))
 
     # ---------------- 音效与动效 ----------------
 
@@ -973,6 +1012,7 @@ class App:
         self.refresh_desc()
         self.entry.config(state="normal", textvariable=None)
         self.entry.delete(0, "end")
+        self.echo.config(text="")
         self.send_btn.config(state="normal")
         self.hint_btn.config(state="normal", text="提示 %d/%d" % (g.my_hints(), HINTS))
         self.challenge_btn.config(state="disabled")
@@ -994,7 +1034,7 @@ class App:
         if g.ya_ling:
             note.append("雅令")
         if g.timed:
-            note.append("限时 %d 秒" % TIME_LIMIT)
+            note.append("限时 %d 秒" % g.time_limit)
         if g.theme != THEME_ALL:
             note.append("主题「%s」" % g.theme)
         if g.two_player:
@@ -1095,10 +1135,13 @@ class App:
         self.match_label.config(text="第 %d 局　%d : %d" % (self.round_no, self.my_rounds, self.ai_rounds))
 
     def change_level(self, value):
-        """切难度：立刻对本局生效"""
-        if self.game:
-            self.game.level = value
-        self.write("电脑难度：「%s」\n\n" % value, "sys")
+        """切难度：立刻对本局生效，限时模式的每回合秒数也跟着换"""
+        g = self.game
+        if g:
+            g.level = value
+            g.time_limit = LEVELS.get(value, LEVELS[DEFAULT_LEVEL])["time"]
+        note = "　限时 %d 秒" % g.time_limit if g and g.timed else ""
+        self.write("电脑难度：「%s」%s\n\n" % (value, note), "sys")
 
     def refresh_count(self):
         """顶部副标题里的总句数（玩家添加诗句后会变）"""
@@ -1324,6 +1367,7 @@ class App:
         self.beep("ok")
         self.pulse_score(who)
         self.entry.delete(0, "end")
+        self.echo.config(text="")        # 接上了就把那行提示收掉
         # 先把输入锁上再刷分数，倒计时的秒数才会跟着收掉
         self.entry.config(state="disabled")
         self.send_btn.config(state="disabled")
@@ -1368,7 +1412,7 @@ class App:
         self.send_btn.config(state="normal")
         self.entry.focus_set()
         # 玩家回合重新开始计时
-        self.game.time_left = TIME_LIMIT
+        self.game.time_left = self.game.time_limit
         # 双人同机换人后，提示次数是各算各的，按钮得跟着换
         left = self.game.my_hints()
         self.hint_btn.config(state="normal" if left > 0 else "disabled",
@@ -1430,6 +1474,7 @@ class App:
         self.write("%s：接不上了……（漏接一次，还剩 %d 次）\n\n" % (who, max(left, 0)), "err")
         self.beep("miss")
         self.entry.delete(0, "end")
+        self.echo.config(text="")
         self.update_score()
 
         if g.two_player:
@@ -1470,6 +1515,7 @@ class App:
         self.send_btn.config(state="disabled")
         self.challenge_btn.config(state="disabled")
         self.hint_btn.config(state="disabled")
+        self.echo.config(text="")        # 收局了，那行提示也收掉
         self.beep("end")
 
         if self.daily:

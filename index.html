@@ -169,6 +169,10 @@ h1{font-size:25px; letter-spacing:3px; font-weight:700}
 }
 .inputbar input:focus{border-color:var(--cinnabar); box-shadow:0 0 0 3px rgba(178,58,46,.1)}
 .inputbar input:disabled{background:#f4efe5; color:#a89880}
+/* 边打边看的那一行：只回答"认不认"，不吐答案 */
+.echo{min-height:18px; margin-top:6px; padding-left:2px; font-size:12.5px; letter-spacing:1px; color:var(--ink-3)}
+.echo.ok{color:var(--jade)}
+.echo.warn{color:var(--cinnabar)}
 .btn{
   white-space:nowrap;
   font-family:inherit; font-size:14.5px; letter-spacing:2px; padding:0 22px; border:none; cursor:pointer;
@@ -249,7 +253,7 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; backgrou
           <label class="levelpick">人设<select id="persona"></select></label>
           <label class="levelpick">主题<select id="theme"></select></label>
           <label class="switch" title="令字逐轮往后挪，同一位诗人只接一句"><input type="checkbox" id="ya">雅令</label>
-          <label class="switch" title="20 秒内接不出就漏接一次"><input type="checkbox" id="tm">限时</label>
+          <label class="switch" title="接不出就漏接一次，每回合几秒跟着难度走"><input type="checkbox" id="tm">限时</label>
           <label class="switch" title="两个人轮流接，不跟电脑打"><input type="checkbox" id="tp">双人</label>
           <label class="switch" title="接句、漏接、抓到错误时响一声"><input type="checkbox" id="snd" checked>音效</label>
         </div>
@@ -269,9 +273,11 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; backgrou
       <div class="dialog" id="dialog"></div>
 
       <div class="inputbar">
-        <input id="answer" type="text" placeholder="输入一句含「月」的诗" autocomplete="off">
+        <input id="answer" type="text" placeholder="输入一句含「月」的诗" autocomplete="off"
+               autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="send">
         <button class="btn" id="send">接句</button>
       </div>
+      <div class="echo" id="echo"></div>
       <div class="tools">
         <button class="btn ghost" id="hint">提示 3/3</button>
         <button class="btn ghost" id="challenge" disabled>它有错</button>
@@ -292,7 +298,8 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; backgrou
         <br><b>玩法：</b>诗句里要有本局令字。答对得 10 分，连击每次多 2 分，接错或要提示会把连击清零。每局 3 条命，接不上点「漏接」，3 次漏接本局判负；三局两胜。
         <br><b>抓错：</b>电脑会按难度故意"漏字"或"重复"作答。它说完后「它有错」亮起——抓对 +15 分并续上连击，冤枉它扣 10 分，每句只能质疑一次。
         <br><b>雅令：</b>勾上后令字逐轮往后挪——首轮不限，第 2 轮要排在第 2 字或更后，第 3 轮起要排在第 3 字或更后；同一位诗人只接一句。句数太少的冷门字会自动不递进，作者不够多时也不禁诗人。
-        <br><b>限时：</b>勾上后每回合 <b>20 秒</b>，接不出来就按漏接扣一条命。切换这两项会从头打本局，总比分保留。
+        <br><b>限时：</b>勾上后每回合限时，接不出来就按漏接扣一条命。秒数跟着难度走——初出茅庐 40 秒、旗鼓相当 30 秒、出口成章 20 秒，打字慢就选低难度。切换这两项会从头打本局，总比分保留。
+        <br><b>输入：</b>边打边在框下提示「认得这一句」或「库里没有」，不用按回车才知道对错。
       </div>
     </div>
   </div>
@@ -308,10 +315,11 @@ const COMMON = ["月","花","春","山","风","江","水","云","雨","雪",
 const GENRE_TAG = ["小学必背","宋词","诗经","汉乐府","建安","魏晋","宋诗"];
 
 // 电脑难度：slip = 想不出来的概率，bad = 故意说错的概率，delay = 思考多久（毫秒）
+// time = 限时模式下每回合给几秒。打字慢就选低难度，反正它本来就笨一点
 const LEVELS = {
-  "初出茅庐": { slip:0.26, bad:0.20, delay:900 },
-  "旗鼓相当": { slip:0.12, bad:0.12, delay:700 },
-  "出口成章": { slip:0.04, bad:0.05, delay:450 },
+  "初出茅庐": { slip:0.26, bad:0.20, delay:900, time:40 },
+  "旗鼓相当": { slip:0.12, bad:0.12, delay:700, time:30 },
+  "出口成章": { slip:0.04, bad:0.05, delay:450, time:20 },
 };
 const DEFAULT_LEVEL = "旗鼓相当";
 
@@ -326,7 +334,8 @@ const ROUNDS_TO_WIN = 2;      // 三局两胜
 const YA_MAX_POS = 3;         // 令字最多递进到第 3 字
 const YA_MIN_POOL = 8;        // 某个字位至少要有这么多句，才敢要求它
 const AUTHOR_MIN = 12;        // 作者少于这么多位的令字，不启用"同一诗人不重复"
-const TIME_LIMIT = 20;        // 限时模式每回合几秒
+// 限时模式每回合给几秒：跟着难度走，打字慢就选低难度
+const timeLimit = () => (LEVELS[level] || LEVELS[DEFAULT_LEVEL]).time;
 
 // ---------------- 主题限令 / 电脑人设 / 每日挑战 ----------------
 const THEME_ALL = "全部";
@@ -532,7 +541,7 @@ function init(lingCh){
     authorOk: yaOn ? info.authorOk : false,
     roundNo:1,                            // 本局第几轮（我答对几句 + 1）
     usedAuthors:new Set(),                // 已经接过的诗人
-    timeLeft:TIME_LIMIT
+    timeLeft:timeLimit()
   };
 
   const lc = document.getElementById('lingChar');
@@ -544,6 +553,7 @@ function init(lingCh){
   document.getElementById('send').disabled = false;
   document.getElementById('answer').value = '';
   document.getElementById('answer').placeholder = `输入一句含「${ch}」的诗`;
+  echoHint();
   document.getElementById('dialog').innerHTML = '';
   setChallenge(false);
   syncHint();
@@ -558,7 +568,7 @@ function init(lingCh){
   }
   const note = [];
   if(yaOn) note.push('雅令');
-  if(timeOn) note.push(`限时 ${TIME_LIMIT} 秒`);
+  if(timeOn) note.push(`限时 ${timeLimit()} 秒`);
   if(theme !== THEME_ALL) note.push(`主题「${theme}」`);
   if(twoPlayer) note.push('双人同机');
   else if(persona !== DEFAULT_PERSONA) note.push(`对手「${persona}」`);
@@ -810,6 +820,45 @@ function judge(input){
   return {ok:false, msg:firstBad.msg, type:firstBad.type};
 }
 
+// 边打边看：只回答"认不认"，不进分数，也不替玩家按回车
+// 够 5 个字还认不出来才算真打错；短于 5 字只说"再多打几个字"，
+// 免得把刚打一半的输入判成"诗库里没有"
+function echoHint(){
+  const box = document.getElementById('echo');
+  const input = document.getElementById('answer');
+  if(!box || !input) return;
+  box.className = 'echo';
+  box.textContent = '';
+  if(!state.ch || !state.pool || state.ended) return;
+  const raw = input.value.trim();
+  if(!raw) return;
+  const clean = normalize(raw);
+  if(clean.indexOf(state.ch) < 0){
+    box.textContent = `这一句里还没有「${state.ch}」字`;
+    return;
+  }
+  const cands = matchCandidates(clean);
+  if(!cands.length){
+    if(clean.length < 5){
+      box.textContent = '再打几个字就能认出来了';
+      return;
+    }
+    box.classList.add('warn');
+    box.textContent = '诗库里没有这一句，看看有没有打错字';
+    return;
+  }
+  for(const d of cands){
+    if(!ruleProblem(d)){
+      box.classList.add('ok');
+      box.textContent = '认得这一句';
+      return;
+    }
+  }
+  const bad = ruleProblem(cands[0]);
+  box.classList.add('warn');
+  box.textContent = bad ? bad.msg : '';
+}
+
 function playerTurn(){
   if(state.ended) return;
   const input = document.getElementById('answer');
@@ -844,6 +893,7 @@ function playerTurn(){
   beep('ok');
   bumpScore(who);
   input.value = '';
+  echoHint();                                      // 接上了就把那行提示收掉
   input.disabled = true;
   document.getElementById('send').disabled = true;
   setChallenge(false);
@@ -966,7 +1016,7 @@ function unlock(){
   document.getElementById('send').disabled = false;
   input.focus();
   // 玩家回合重新开始计时
-  state.timeLeft = TIME_LIMIT;
+  state.timeLeft = timeLimit();
   syncHint();          // 双人同机换人后，提示次数是各算各的
   syncScore();
   syncDesc();
@@ -983,6 +1033,7 @@ function finish(why, forcedLose){
   document.getElementById('send').disabled = true;
   setChallenge(false);
   document.getElementById('hint').disabled = true;
+  echoHint();                                      // 收局了，那行提示也收掉
 
   if(daily){ finishDaily(why); return; }
   if(state.twoPlayer){ finishDual(why, forcedLose); return; }
@@ -1121,6 +1172,7 @@ function missTurn(){
   beep('miss');
   addSys(`${who}接不上了……（漏接一次，还剩 ${Math.max(left, 0)} 次）`);
   input.value = '';
+  echoHint();
   syncScore();
 
   if(state.twoPlayer){
@@ -1144,6 +1196,7 @@ function missTurn(){
 
 document.getElementById('send').onclick = playerTurn;
 document.getElementById('answer').addEventListener('keydown', e=>{ if(e.key==='Enter') playerTurn(); });
+document.getElementById('answer').addEventListener('input', echoHint);
 document.getElementById('hint').onclick = useHint;
 document.getElementById('challenge').onclick = challengeAi;
 document.getElementById('miss').onclick = missTurn;
@@ -1179,7 +1232,8 @@ fillSelect(themeSel, Object.keys(THEMES), THEME_ALL);
 
 levelSel.onchange = ()=>{
   level = levelSel.value;
-  addSys(`电脑难度：「${level}」`);
+  // 限时模式下顺手告诉玩家换了难度就是换了每回合的秒数
+  addSys(`电脑难度：「${level}」${state.timed ? `　限时 ${timeLimit()} 秒` : ''}`);
 };
 
 // 人设不用重开：它只改电脑接下来挑哪一类句子
