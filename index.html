@@ -44,10 +44,8 @@ body::before{
 }
 h1{font-size:25px; letter-spacing:3px; font-weight:700}
 .sub{font-size:12.5px; color:var(--ink-3); letter-spacing:1.2px; margin-top:5px}
-.badge{
-  font-size:12px; letter-spacing:1px; color:var(--jade); border:1px solid rgba(61,107,92,.4);
-  background:rgba(61,107,92,.06); border-radius:100px; padding:6px 14px; white-space:nowrap;
-}
+/* 标题栏右侧的按钮组：包成一组，space-between 才不会把「分享」甩到中间 */
+.acts{display:flex; align-items:center; gap:9px; flex-wrap:wrap}
 .panel{
   background:var(--card); border:1px solid var(--line); border-radius:14px;
   box-shadow:0 1px 0 #fff inset, 0 12px 30px -18px rgba(70,50,30,.45);
@@ -298,9 +296,10 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; backgrou
         <div class="sub" id="subLine">唐诗 + 宋词 + 小学必背 · 离线运行</div>
       </div>
     </div>
-    <div class="badge">网页版 · 双击即可玩</div>
-    <button class="sharebtn" id="shareBtn" title="把网址发给朋友">分享</button>
-    <button class="daily" id="daily" title="同一天打开，题目都一样">每日挑战</button>
+    <div class="acts">
+      <button class="sharebtn" id="shareBtn" title="把网址发给朋友">分享</button>
+      <button class="daily" id="daily" title="同一天打开，题目都一样">每日挑战</button>
+    </div>
   </div>
 
   <div class="panel">
