@@ -7,7 +7,9 @@
 
 > Social Preview：![preview](docs/social-preview.png)
 
-**在线试玩 / Play online**: `https://你的用户名.github.io/feihualing/`（部署 GitHub Pages 后即可访问）
+**在线试玩 / Play online**: <https://tjnh05.github.io/feihualing/>　·　手机扫码 ↓
+
+<img src="docs/qr.png" width="140" alt="扫码在手机上玩">
 
 ## 这是什么
 
@@ -191,7 +193,9 @@ feihualing/
 │   └── tools/
 │       ├── build_poems.py  数据构建脚本（可反复运行）
 │       └── extra_poems.py  手工整理的补充诗句
-└── docs/screenshots/       截图
+└── docs/
+    ├── qr.png              在线版二维码（README 与网页底部共用，换域名要两处一起改）
+    └── screenshots/        截图
 ```
 
 ## 开发中的问题与解决

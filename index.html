@@ -204,6 +204,11 @@ h1{font-size:25px; letter-spacing:3px; font-weight:700}
   border-top:1px dashed var(--line); padding-top:12px;
 }
 .note b{color:var(--ink-2)}
+/* 二维码只在宽屏露出来：手机上打开这页的人扫它没有意义 */
+.qrbox{display:flex; align-items:center; gap:14px; margin-top:16px; padding-top:14px; border-top:1px solid var(--line)}
+.qrbox img{width:104px; height:104px; flex:none; border-radius:7px; border:1px solid var(--line)}
+.qrbox p{font-size:12.5px; color:var(--ink-3); line-height:1.75; margin:0}
+.qrbox b{display:block; font-size:13.5px; letter-spacing:1px; margin-bottom:2px}
 code{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; background:rgba(139,115,85,.12); padding:1px 5px; border-radius:3px}
 @media(max-width:640px){
   .stage{padding:16px 14px 18px}
@@ -216,6 +221,7 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; backgrou
   .tools{gap:7px} .tools .btn{padding:0 12px}
   .seal{width:46px;height:46px;font-size:12px}
   .dialog{max-height:240px}
+  .qrbox{display:none}
 }
 </style>
 </head>
@@ -300,6 +306,10 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; backgrou
         <br><b>雅令：</b>勾上后令字逐轮往后挪——首轮不限，第 2 轮要排在第 2 字或更后，第 3 轮起要排在第 3 字或更后；同一位诗人只接一句。句数太少的冷门字会自动不递进，作者不够多时也不禁诗人。
         <br><b>限时：</b>勾上后每回合限时，接不出来就按漏接扣一条命。秒数跟着难度走——初出茅庐 40 秒、旗鼓相当 30 秒、出口成章 20 秒，打字慢就选低难度。切换这两项会从头打本局，总比分保留。
         <br><b>输入：</b>边打边在框下提示「认得这一句」或「库里没有」，不用按回车才知道对错。
+        <div class="qrbox">
+          <img src="data:image/png;base64,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" alt="扫码在手机上玩" width="104" height="104">
+          <p><b>手机上玩</b>扫一下，在手机浏览器里打开在线版</p>
+        </div>
       </div>
     </div>
   </div>
