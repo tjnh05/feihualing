@@ -248,6 +248,22 @@ h1{font-size:25px; letter-spacing:3px; font-weight:700}
   border:1px solid var(--gold); display:none; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
 }
 .over.show{display:flex; animation:rise .4s ease}
+/* 收局横幅左边立一枚印，把「通知」变成「判词」。
+   印和「标题 + 描述」并排，标题和描述仍上下摆——别把这层 flex 加到里面那层 */
+.overbox{display:flex; align-items:center; gap:15px; min-width:0}
+.overseal{
+  flex:none; width:46px; height:46px; display:grid; place-items:center;
+  font-size:21px; font-weight:600; letter-spacing:0; color:#fff8ec; border-radius:5px;
+  background:var(--cinnabar);
+  box-shadow:0 3px 0 rgba(150,45,35,.4), inset 0 0 0 2px rgba(255,248,236,.5);
+  transform:rotate(-6deg);
+  animation:stampIn .45s cubic-bezier(.22,1.5,.45,1) both;
+}
+/* 输和平局用玉青，别拿朱砂去盖一件不喜庆的事 */
+.overseal.lose{
+  background:#5b6a63;
+  box-shadow:0 3px 0 rgba(60,75,68,.4), inset 0 0 0 2px rgba(255,248,236,.5);
+}
 .over h3{font-size:18px; letter-spacing:2px}
 .over p{font-size:12.5px; color:var(--ink-3); margin-top:4px}
 
@@ -370,9 +386,12 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; backgrou
       </div>
 
       <div class="over" id="over">
-        <div>
-          <h3 id="overTitle">本局结束</h3>
-          <p id="overDesc"></p>
+        <div class="overbox">
+          <span class="overseal" id="overSeal">胜</span>
+          <div>
+            <h3 id="overTitle">本局结束</h3>
+            <p id="overDesc"></p>
+          </div>
         </div>
         <button class="btn" id="again">再来一局</button>
       </div>
@@ -1145,6 +1164,12 @@ function unlock(){
   startTimer();
 }
 
+// 收局横幅左边那枚印：字是判词，色是情绪。输和平局走玉青
+function sealOver(text, win){
+  const s = document.getElementById('overSeal');
+  s.textContent = text;
+  s.classList.toggle('lose', !win);
+}
 function finish(why, forcedLose){
   if(state.ended) return;
   state.ended = true;
@@ -1166,6 +1191,7 @@ function finish(why, forcedLose){
   syncMatch();
   syncScore();                                     // 计时显示要跟着收掉
 
+  sealOver(win ? '胜' : '负', win);
   document.getElementById('over').classList.add('show');
   const detail = `令字「${state.ch}」　你 ${state.score} 分 / 电脑 ${state.aiScore} 分　·　${why}`;
   const title = document.getElementById('overTitle');
@@ -1202,6 +1228,8 @@ function finishDual(why, forcedLose){
   state.matchOver = true;
   syncMatch();
   syncScore();
+  // 双人模式盖赢家那一方的标记，平局盖「和」
+  sealOver(winner === null ? '和' : (winner === 0 ? '甲' : '乙'), winner !== null);
   document.getElementById('over').classList.add('show');
   document.getElementById('overTitle').textContent = `本局${head}`;
   document.getElementById('overDesc').textContent =
@@ -1217,13 +1245,16 @@ function finishDaily(why){
   const old = loadDaily()[daily.key] || {};
   const best = saveDaily(daily.key, record);
   const bestLines = best.lines || 0;
+  const improved = lines > (old.lines || 0);       // 破了今天先前那次的纪录
   syncMatch();
   syncScore();
+  // 每日挑战没有对手，盖的是"今天有没有进步"：破了盖「新」，没破盖「录」
+  sealOver(improved ? '新' : '录', improved);
   document.getElementById('over').classList.add('show');
   document.getElementById('overTitle').textContent = '今日挑战结束';
   let desc = `令字「${state.ch}」　主题「${state.theme}」　你接 ${lines} 句 ${state.score} 分 / `
     + `电脑 ${state.aiScore} 分　·　${why}　今日最佳 ${bestLines} 句`;
-  if(lines > (old.lines || 0)) desc += '（刷新纪录）';
+  if(improved) desc += '（刷新纪录）';
   document.getElementById('overDesc').textContent = desc;
   document.getElementById('again').textContent = '再打一遍';
 }
