@@ -183,7 +183,7 @@ h1{font-size:25px; letter-spacing:3px; font-weight:700}
 .ava.p{background:var(--jade); color:#fff}
 .ava.c{background:#3a3026; color:#f0dfc0}
 .bub{
-  max-width:78%; padding:10px 14px; border-radius:3px 11px 11px 11px; line-height:1.8;
+  position:relative; max-width:78%; padding:10px 14px; border-radius:3px 11px 11px 11px; line-height:1.8;
   font-size:16.5px; letter-spacing:.4px;
 }
 .row.right .bub{border-radius:11px 3px 11px 11px}
@@ -196,6 +196,21 @@ h1{font-size:25px; letter-spacing:3px; font-weight:700}
   background:rgba(178,58,46,.05); border-radius:3px; padding:0 4px; margin-left:5px; vertical-align:1px;
 }
 .bub mark{background:rgba(178,58,46,.13); color:var(--cinnabar); font-weight:700; padding:0 2px; border-radius:2px}
+/* 接对落印：连到三句才盖，盖在气泡左上角外头，避开诗句和来源 */
+.stamp{
+  position:absolute; left:-15px; top:-11px; width:31px; height:31px;
+  display:grid; place-items:center; font-style:normal; font-size:14.5px; font-weight:600;
+  letter-spacing:0; color:#fff8ec; background:var(--cinnabar); border-radius:4px;
+  box-shadow:0 2px 7px -2px rgba(150,45,35,.6), inset 0 0 0 2px rgba(255,248,236,.45);
+  pointer-events:none; transform:rotate(-8deg);
+  animation:stampIn .42s cubic-bezier(.22,1.5,.45,1) both;
+}
+/* 从大到小压下来、落定时回弹一下，像手里那枚印按下去 */
+@keyframes stampIn{
+  0%{opacity:0; transform:rotate(-8deg) scale(2.1)}
+  60%{opacity:1; transform:rotate(-8deg) scale(.92)}
+  100%{opacity:1; transform:rotate(-8deg) scale(1)}
+}
 .sysnote{text-align:center; font-size:11.5px; color:var(--ink-3); letter-spacing:1px}
 
 /* 输入 */
@@ -866,6 +881,17 @@ function addLine(who, text, metaHtml, isErr, name){
   bub.innerHTML = hl + (metaHtml ? `<span class="meta">${metaHtml}</span>` : '');
   row.appendChild(ava); row.appendChild(bub);
   d.appendChild(row); d.scrollTop = d.scrollHeight;
+  return bub;
+}
+
+// 连击到 3 起在气泡角上盖一枚印：3 连「妙」、5 连「绝」、8 连「神」
+// 门槛写在这儿，别处调它就不必再判一次
+function stamp(bub, streak){
+  if(streak < 3) return;
+  const s = document.createElement('i');
+  s.className = 'stamp';
+  s.textContent = streak >= 8 ? '神' : streak >= 5 ? '绝' : '妙';
+  bub.appendChild(s);
 }
 
 // 在池子里找玩家写的是哪一句：整句 / 半句 / 整联整首都认
@@ -984,7 +1010,8 @@ function playerTurn(){
     state.score += gain;
   }
 
-  addLine('p', r.hit[0], sourceHtml(r.hit) + `　+${gain} 分`, false, whoName(who));
+  const bub = addLine('p', r.hit[0], sourceHtml(r.hit) + `　+${gain} 分`, false, whoName(who));
+  stamp(bub, state.streak);                        // 连到三句才有印，也算个奖励
   beep('ok');
   bumpScore(who);
   input.value = '';
