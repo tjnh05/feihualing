@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>诗词飞花令 · 人机对战</title>
-<meta name="description" content="和电脑玩飞花令：你说一句含令字的诗，电脑接一句。4351 句唐诗宋词，离线可玩。">
+<meta name="description" content="和电脑玩飞花令：你说一句含令字的诗，电脑接一句。4351 句诗词文，唐诗宋词为主，离线可玩。">
 <meta property="og:title" content="诗词飞花令 · 人机对战">
-<meta property="og:description" content="4351 句唐诗宋词，和电脑对战飞花令。">
+<meta property="og:description" content="4351 句诗词文，从《诗经》接到清代，和电脑对战飞花令。">
 <meta name="theme-color" content="#f6efe1">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2214%22 fill=%22%23b23a2e%22/><text y=%2272%22 x=%2250%22 text-anchor=%22middle%22 font-size=%2252%22 fill=%22%23fff8ec%22 font-family=%22serif%22>令</text></svg>">
 
@@ -324,7 +324,7 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; backgrou
       <div class="seal">飞花<br>令</div>
       <div>
         <h1>诗词飞花令 · 人机对战</h1>
-        <div class="sub" id="subLine">唐诗 + 宋词 + 小学必背</div>
+        <div class="sub" id="subLine">先秦至清</div>
       </div>
     </div>
     <div class="acts">
@@ -399,7 +399,8 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; backgrou
       <details class="note" id="rules" open>
         <summary>玩法说明 · 数据来源</summary>
         <div class="note-body">
-          <b>数据：</b>4351 句，来自 <code>chinese-poetry</code> 的《唐诗三百首》，加上手工整理的唐诗名篇、宋词、五代词、宋诗、部编版小学必背古诗、诗经与汉乐府。原文是繁体，已全部转成简体，否则搜"风"查不到"風"。
+          <b>数据：</b>4351 句，从《诗经》一路接到清代。唐诗 3171 句（五七言的绝句、律诗、古诗、乐府，含《唐诗三百首》之外的名篇 562）、宋词 877 句（词 678，另含宋诗 158 与李煜那 41 首五代词）、小学必背 165 句（部编版 1–6 年级）。底本来自 <code>chinese-poetry</code> 的《唐诗三百首》，其余手工整理；原文是繁体，已全部转成简体，否则搜"风"查不到"風"。
+          <br><b>主题：</b>右侧那个下拉只有四档可选——全部 / 唐诗 / 宋词 / 小学必背。另有 138 句不归任何一档：古文 56（《滕王阁序》《岳阳楼记》《醉翁亭记》）、诗经 28、建安 18、汉乐府 15、魏晋 14、颂古与谚语 7。它们只在选「全部」时接得到，所以下拉里点不到它们，不是没收进来。
           <br><b>玩法：</b>诗句里要有本局令字。答对得 10 分，连击每次多 2 分，接错或要提示会把连击清零。每局 3 条命，接不上点「漏接」，3 次漏接本局判负；三局两胜。
           <br><b>抓错：</b>电脑会按难度故意"漏字"或"重复"作答。它说完后「它有错」亮起——抓对 +15 分并续上连击，冤枉它扣 10 分，每句只能质疑一次。
           <br><b>雅令：</b>勾上后令字逐轮往后挪——首轮不限，第 2 轮要排在第 2 字或更后，第 3 轮起要排在第 3 字或更后；同一位诗人只接一句。句数太少的冷门字会自动不递进，作者不够多时也不禁诗人。
@@ -1457,7 +1458,10 @@ dailyBtn.onclick = ()=>{
   init(daily.word);
 };
 
-document.getElementById('subLine').textContent = `唐诗 + 宋词 + 小学必背 · ${DATA.length} 句`;
+// 副标题不列类目：库里 19 个体裁值混着「时代/来源」和「格律形式」两套维度，
+// 并列摆出来会让人觉得它们是互斥的类。完整构成在页脚「玩法说明 · 数据来源」里。
+// 先秦至清是核过的：最早是《诗经》，清代有高鼎、郑燮、龚自珍
+document.getElementById('subLine').textContent = `${DATA.length} 句 · 先秦至清`;
 
 /* ── 分享 ──────────────────────────────────────────────
    二维码借页面底部那张图的 src，不再多内嵌一份 base64。
