@@ -5,7 +5,7 @@ build_poems.py —— 构建诗句数据文件（可以反复运行，结果稳�
   1. 读取 data/poems_tang_original.json 里的唐诗底本（唐诗三百首）
   2. 清洗：去掉 "(明年一作：年年)" 这类校勘注；把塞了整段的长句拆成短句；过滤超长句
   3. 合并 extra_poems.py 里手工整理的补充数据
-     （整篇补全 / 小学必背 / 宋词 / 五代词 / 诗经乐府 / 四季名篇 / 唐诗名篇 / 宋诗 / 补遗 / 元明清）
+     （整篇补全 / 小学必背 / 宋词 / 五代词 / 诗经乐府 / 四季名篇 / 唐诗名篇 / 宋诗 / 补遗 / 元明清 / 禅诗）
   4. 按 TITLE_ALIAS、LINE_ALIAS、GENRE_FIX 三张表把简称篇名和错标的体裁改回来
   5. 去重、排序、写出 data/poems.json
   6. 打印质量报告（总数、各类别句数、常用令字覆盖）
@@ -18,7 +18,7 @@ import re
 from collections import Counter
 
 from extra_poems import (PRIMARY_SCHOOL, SONG_CI, SONG_CI_EXTRA, CLASSICS, SEASONS,
-                         TANG_CLASSICS, SONG_SHI, MORE_POEMS, FULL_TEXTS, MING_QING)
+                         TANG_CLASSICS, SONG_SHI, MORE_POEMS, FULL_TEXTS, MING_QING, ZEN)
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # 项目根目录
 DATA_FILE = os.path.join(BASE, "data", "poems.json")
@@ -282,10 +282,10 @@ def main():
 
     # 2) 合并补充数据。整篇的排在前面，摘句的只用来补整篇没覆盖到的句子
     extra = normalize(FULL_TEXTS + PRIMARY_SCHOOL + SONG_CI + SONG_CI_EXTRA + CLASSICS
-                      + SEASONS + TANG_CLASSICS + SONG_SHI + MORE_POEMS + MING_QING,
+                      + SEASONS + TANG_CLASSICS + SONG_SHI + MORE_POEMS + MING_QING + ZEN,
                       keep_short=True)
     print("补充数据：", len(extra),
-          "（整篇 / 小学必背 / 宋词 / 五代词 / 诗经乐府 / 四季名篇 / 唐诗名篇 / 宋诗 / 补遗 / 元明清）")
+          "（整篇 / 小学必背 / 宋词 / 五代词 / 诗经乐府 / 四季名篇 / 唐诗名篇 / 宋诗 / 补遗 / 元明清 / 禅诗）")
 
     # 玩家在界面里自己添的句子，放在最后，不覆盖原名句
     user = load_user_poems()
@@ -308,6 +308,7 @@ def main():
              "诗经": 4, "汉乐府": 5, "建安": 6, "魏晋": 7,
              "唐诗名篇": 8, "古文": 9,
              "元诗": 10, "明诗": 11, "明词": 12, "清诗": 13, "清词": 14,
+             "禅诗": 15,
              "自编": 20}
     merged.sort(key=lambda r: (order.get(r["体裁"], 9), len(r["句"])))
 
