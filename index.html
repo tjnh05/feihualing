@@ -266,6 +266,10 @@ h1{font-size:25px; letter-spacing:3px; font-weight:700}
 }
 .over h3{font-size:18px; letter-spacing:2px}
 .over p{font-size:12.5px; color:var(--ink-3); margin-top:4px}
+/* 收局面板里那颗「带走这一局」。它是出口不是玩法，所以不给它另起浮层，
+   也不给它新颜色——按钮和说明并排，摆不下就自己折 */
+.carryrow{display:flex; align-items:center; gap:8px 10px; flex-wrap:wrap; margin-top:9px; min-width:0}
+.carryrow .cnote{margin:0; font-size:11.5px; line-height:1.6}
 
 /* 玩法说明收成可折的一行：默认展开，收起后状态记在本地 */
 .note{margin-top:16px; border-top:1px dashed var(--line); padding-top:5px}
@@ -321,6 +325,9 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; backgrou
   /* 战绩八格手机上折成两列四行；比行那串小字收掉，别把「第 N 局」挤换行 */
   .cgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .cbits{display:none}
+  /* 收局那颗按钮在手机上挤不进说明那一行，就让它自己领着排 */
+  .carryrow{gap:5px 8px}
+  .carryrow .btn.tiny{height:26px; padding:0 11px}
 }
 
 /* 再窄一档，分享弹层里二维码和说明就得上下摆了：
@@ -408,6 +415,11 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; backgrou
           <div>
             <h3 id="overTitle">本局结束</h3>
             <p id="overDesc"></p>
+            <!-- 出口不是玩法：一颗按钮，复制一段纯文本，双人局由 JS 收掉 -->
+            <div class="carryrow" id="carryRow">
+              <button class="btn ghost tiny" id="carryBtn">带走这一局</button>
+              <p class="cnote">复制的是一段纯文本：局面、句子清单，外加由这局规则写出来的写作题目。</p>
+            </div>
           </div>
         </div>
         <button class="btn" id="again">再来一局</button>
@@ -442,6 +454,7 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; backgrou
           <br><b>玩法：</b>诗句里要有本局令字。答对得 10 分，连击每次多 2 分，接错或要提示会把连击清零。每局 3 条命，接不上点「漏接」，3 次漏接本局判负。三局两胜——<b>分数得比电脑高才算胜，一样多是和局</b>；三局打完胜局还相同（比如全是和局），就比这三局的累计总分，连总分都一样才算整场和。
           <br><b>抓错：</b>电脑会按难度故意"漏字"或"重复"作答。它说完后「它有错」亮起——抓对 +15 分并续上连击，冤枉它扣 5 分，每句只能质疑一次。定 5 分是为了让你敢按：按电脑 12% 的使坏率算，闭眼乱抓仍然是亏的（约 -3.6 分），看得出问题才稳赚。
           <br><b>战绩：</b>上面那栏「本机战绩」记的是这台浏览器上的胜 / 负 / 和、当前与最长连胜、累计接上多少句、在 4414 句里接过多少句、打卡与连续打卡天数。只写本地，换设备或清缓存就归零；胜负只算人机对战，每日挑战只记句子，双人同机什么都不记。
+          <br><b>带走：</b>收局那行有颗「带走这一局」，点一下复制一段纯文本——这一局的比分与规则、你和电脑各接了哪几句（含令字排在第几字），再加由本局规则写出来的写作题目（赏析、改写，接上的句子少就只给其中一道）。文本全在本机拼，页面不联网、也不替你写任何东西；不足三句没有改写题，一句都没接上只留一句热身提示，双人同机那一局也没有这颗按钮。
           <br><b>雅令：</b>勾上后令字逐轮往后挪——首轮不限，第 2 轮要排在第 2 字或更后，第 3 轮起要排在第 3 字或更后；同一位诗人只接一句。句数太少的冷门字会自动不递进，作者不够多时也不禁诗人。
           <br><b>限时：</b>勾上后每回合限时，接不出来就按漏接扣一条命。秒数跟着难度走——初出茅庐 40 秒、旗鼓相当 30 秒、出口成章 20 秒，打字慢就选低难度。切换这两项会从头打本局，总比分保留。
           <br><b>输入：</b>边打边在框下提示「认得这一句」或「库里没有」，不用按回车才知道对错。
@@ -821,7 +834,12 @@ function init(lingCh){
     rnd: rndOf(daily ? daily.seed : null),
     usedSet:new Set(), usedPoems:[],
     myIdx:[],                          // 本局「我」接过的句子在 DATA 里的下标，收局时进本机战绩
-    score:0, streak:0, aiCount:0, aiScore:0, slips:0,
+    // 下面几行只给收局那段「带走这一局」用：写题目要有对手的底稿
+    aiIdx:[],                          // 电脑接过的句子下标（含它使坏混进来的那句）
+    badPos:[],                         // 玩家抓到过的那几句在 aiIdx 里的位次；没抓到就空着
+    result:'', champ:'',               // 收局判词，「带走这一局」照着它写，不再另判一次
+    score:0, streak:0, bestStreak:0, aiCount:0, aiScore:0, slips:0,
+    timeSec:timeOn ? timeLimit() : 0,  // 本局的限时秒数：难度随时能改，收局时要拿本局那个值
     lives:LIVES, hints:HINTS,
     // 双人同机：甲乙各自一套分、命、提示次数
     pScores:[0,0], pLives:[LIVES,LIVES], pHints:[HINTS,HINTS], pLines:[0,0], turn:0,
@@ -1193,6 +1211,8 @@ function playerTurn(){
     gain = 10;
   }else{
     state.streak += 1;
+    // streak 是实时值，接错就清零；写题目要的是"本局最长连了几句"，另存一份
+    state.bestStreak = Math.max(state.bestStreak, state.streak);
     gain = 10 + (state.streak - 1) * 2;
     state.score += gain;
     // 人机对战才记战绩；双人同机没有「我」这一方
@@ -1257,6 +1277,9 @@ function aiTurn(){
     state.aiBadReason = reason;
     state.aiBad = true;
     state.aiCount += 1;
+    // 混进来的那句也要进 aiIdx：收局写题目时它是唯一有悬念的素材，
+    // 而且它落下的正是 aiIdx 的末位，「它有错」按下去时就顺着这个末位记一笔
+    state.aiIdx.push(DATA.indexOf(poem));
     addLine('c', poem[0], sourceHtml(poem));
     syncScore();
     setActive('p');
@@ -1269,6 +1292,7 @@ function aiTurn(){
   state.usedSet.add(normalize(pick[0]));
   state.usedPoems.push(pick);
   state.usedAuthors.add(pick[1]);
+  state.aiIdx.push(DATA.indexOf(pick));
   state.aiCount += 1;
   state.aiScore += 10;
   addLine('c', pick[0], sourceHtml(pick));
@@ -1352,6 +1376,9 @@ function finish(why, forcedLose){
   document.getElementById('hint').disabled = true;
   echoHint();                                      // 收局了，那行提示也收掉
 
+  // 双人同机没有「我」这一方，这段文本写不出主语，就把入口收掉；人机与每日挑战都给
+  document.getElementById('carryRow').style.display = state.twoPlayer ? 'none' : 'flex';
+
   if(daily){ finishDaily(why); return; }
   if(state.twoPlayer){ finishDual(why, forcedLose); return; }
 
@@ -1361,6 +1388,7 @@ function finish(why, forcedLose){
   const fair = !forcedLose && state.lives > 0;
   const win = fair && state.score > state.aiScore;
   const draw = fair && state.score === state.aiScore;
+  state.result = win ? '胜' : draw ? '和' : '负';
   careerRound(win ? 'win' : draw ? 'draw' : 'lose', state.myIdx);
   if(win) match.my += 1; else if(draw) match.draw += 1; else match.ai += 1;
   match.myTotal += state.score; match.aiTotal += state.aiScore;
@@ -1381,6 +1409,7 @@ function finish(why, forcedLose){
     let champ = null;
     if(match.my !== match.ai) champ = match.my > match.ai;
     else if(match.myTotal !== match.aiTotal) champ = match.myTotal > match.aiTotal;
+    state.champ = champ === null ? '和' : champ ? '胜' : '负';
     title.textContent = champ === null ? '比赛结束 · 整场和局'
                       : champ ? '比赛结束 · 你赢了！' : '比赛结束 · 电脑赢了';
     // 整场收场时盖整场那一枚，把刚才那枚单局的印换掉
@@ -1451,6 +1480,127 @@ function finishDaily(why){
   document.getElementById('again').textContent = '再打一遍';
 }
 
+/* ---------------- 带走这一局 ----------------
+   收局后把本局事实拼成一段纯文本供复制。素材全部来自这局真打出来的东西：令字、
+   每句的字位、最长连击、比分、开了哪些规则、电脑说过哪几句、本机已经接过哪几句。
+   这功能唯一的本钱就是这些独家输入——「请赏析某句」那种空模板任何诗词站都能给，
+   所以这里不写死模板，一律按本局规则条件生成。
+   措辞上不出现「AI / 大模型 / 生成」：这页承诺离线零请求，那种词会让人疑心站内
+   在偷偷发请求。它也只是个出口不是玩法——零决策、打完才出现，不进标题栏。 */
+function carryText(){
+  const at = i => (i >= 0 && DATA[i] ? DATA[i] : null);
+  const ch = state.ch;
+  const mine = state.myIdx.map(at).filter(Boolean);
+  // 句子要和「抓到过的那几个位次」一块儿走，所以先带位次配对再滤掉越界的——
+  // 直接 filter 会让两个数组错位，标到没被抓过的那句上
+  const theirs = state.aiIdx
+    .map((idx, i) => ({ d: at(idx), bad: state.badPos.indexOf(i) >= 0 }))
+    .filter(o => o.d);
+
+  const row = (d, n, bad) => {
+    const p = posOf(d[0], ch);
+    const bits = [];
+    // 漏字那句算不出字位，宁可不写也不写「令第 0 字」，更不点破它错在哪——
+    // 「这句是它混进来的」已经说完我们知道的，剩下的是玩家的活儿
+    if(p > 0) bits.push(`令字第 ${p} 字`);
+    if(GENRE_TAG.indexOf(d[3]) >= 0) bits.push(d[3]);
+    if(bad) bits.push('这句是它混进来的');
+    return `${n}. ${d[0]}——${d[1]}《${d[2]}》${bits.length ? `（${bits.join('，')}）` : ''}`;
+  };
+
+  const out = [];
+  out.push(daily ? `【诗词飞花令 · 每日挑战 · 令字「${ch}」· 主题「${state.theme}」】`
+                 : `【诗词飞花令 · 第 ${match.round} 局 · 令字「${ch}」】`);
+
+  // 局面事实：判定读收局那套（state.result / champ），不在这里重算一遍
+  const facts = [];
+  if(daily){
+    const best = (loadDaily()[daily.key] || {}).lines || 0;
+    facts.push(`结果：你 ${state.score} 分 / 电脑 ${state.aiScore} 分，接上 ${Math.max(state.roundNo - 1, 0)} 句　今日最佳 ${best} 句`);
+  }else{
+    // 整场那句的局数取真打了几局：2:0 横扫只有两局，写死「三局」会跟抬头自相矛盾
+    facts.push(`结果：你 ${state.score} 分 / 电脑 ${state.aiScore} 分，本局${state.result || '未判'}`
+      + (state.matchOver
+        ? `　${match.round} 局打完 ${match.my}:${match.ai}${match.draw ? `（和 ${match.draw} 局）` : ''}，`
+          + (state.champ === '胜' ? '拿下这一场' : state.champ === '负' ? '这一场输给电脑' : '整场打平')
+        : ''));
+  }
+  if(state.bestStreak >= 2) facts.push(`最长连击 ${state.bestStreak}`);
+  if(state.slips > 0) facts.push(`抓到电脑出错 ${state.slips} 次`);
+  // maxPos 是这个令字的天花板，不是本局走到的位置，措辞得留着这一点余地
+  if(state.yaLing) facts.push(`雅令·字位上限第 ${state.maxPos} 字`);
+  // 秒数读收局这一局自己的快照：难度下拉在收局面板开着时还能改，现拉会写出下一局的秒数
+  if(state.timed) facts.push(`限时 ${state.timeSec || timeLimit()} 秒`);
+  if(!daily){
+    if(state.theme !== THEME_ALL) facts.push(`主题「${state.theme}」`);
+    if(state.persona !== DEFAULT_PERSONA) facts.push(`对手「${state.persona}」`);
+  }
+  out.push(facts.join('　'));
+
+  if(mine.length){
+    out.push(`我接的 ${mine.length} 句：`);
+    mine.forEach((d, i) => out.push(row(d, i + 1, false)));
+  }else if(theirs.length){
+    const used = theirs.filter(o => normalize(o.d[0]).indexOf(ch) >= 0).length;
+    out.push(`这一局你没接上句子，令字「${ch}」在本局被电脑用了 ${used} 次。`);
+  }else{
+    // 开局一句没说就「换令字」判负那种，写「被电脑用了 0 次」等于什么都没说
+    out.push(`这一局你和电脑都没接上句子，令字「${ch}」一句都还没出去。`);
+  }
+  if(theirs.length){
+    out.push(`电脑接的 ${theirs.length} 句：`);
+    theirs.forEach((o, i) => out.push(row(o.d, i + 1, o.bad)));
+  }
+
+  // 题目：同一位诗人在非雅令下能出现两次，那正好是个比较的由头
+  const tasks = [];
+  const tally = {};
+  const dup = [];
+  mine.forEach(d => { tally[d[1]] = (tally[d[1]] || 0) + 1; if(tally[d[1]] === 2) dup.push(d[1]); });
+  if(mine.length >= 2){
+    tasks.push(`一、赏析：从上面挑一句，别复述大意。写清令字为什么落在它那个位置、把那个字去掉这句还站不站得住，以及你为什么当场想得起它。`);
+    if(dup.length) tasks.push(`　　补一句：本局「${dup.join('、')}」的句子出现过两次，比较一下同一个人在不同篇里对这个令字的用法。`);
+    else if(daily) tasks.push(`　　补一句：今天的令字是固定的，换成你更熟的一个字重看一遍这句，看它换个字还成不成立。`);
+  }else if(mine.length === 1){
+    tasks.push(`一、赏析：就上面那一句，写两句它为什么在这个位置被你想起来，别复述大意。`);
+  }
+  // 改写题要三句才够材料，句子少了整条不写，不留「暂无」那种占位
+  if(mine.length >= 3){
+    let w;
+    if(state.yaLing) w = `把「${ch}」依次排在第 1、2、3…… 字位，写一组本局没出现过的句子`;
+    else if(state.theme !== THEME_ALL) w = `还在主题「${state.theme}」里，另写 ${mine.length} 句含「${ch}」的、上面没出现过的句子`;
+    else w = `照上面每句的字数各仿一句新的，本局出现过的句子不许再用`;
+    if(state.authorOk){
+      w += `，每位诗人只用一次（你本局用过 ${[...new Set(mine.map(d => d[1]))].slice(0, 5).join('、')}）`;
+    }
+    tasks.push(`二、改写：${w}。`);
+  }
+  if(!mine.length) tasks.push(`一、热身：先挑一个你熟的令字再来一局，接上三句以上再回来带走它。`);
+  if(tasks.length){ out.push('【可以拿去写的】'); tasks.forEach(t => out.push(t)); }
+
+  // 个性化：本机已经接过哪些句子（战绩模块那份下标现映射作者，不另存）
+  if(career.used.length){
+    const authors = new Set();
+    let withCh = 0;
+    career.used.forEach(i => {
+      const d = DATA[i];
+      if(!d) return;
+      authors.add(d[1]);
+      if(normalize(d[0]).indexOf(ch) >= 0) withCh += 1;
+    });
+    out.push(`本机累计接过 ${career.used.length} 个不同的句子、涉及 ${authors.size} 位诗人，其中含「${ch}」的 ${withCh} 句——请避开已经写过的那些。`);
+  }
+
+  out.push(`——　诗词飞花令，${DATA.length} 句库。这段文字在本机拼成，页面没有联网。`);
+  return out.join('\n');
+}
+
+document.getElementById('carryBtn').onclick = async () => {
+  // 复制走分享那一套现成链路（clipboard 优先，file:// 下降级 execCommand）
+  const done = await copyText(carryText());
+  toast(done ? '已复制，粘到别的软件里就能用' : '复制没成功，再按一次试试');
+};
+
 function nextRound(){
   if(daily){ init(daily.word); return; }           // 同一道题还能再打，只记最好的那次
   if(state.matchOver) resetMatch(); else match.round += 1;
@@ -1480,6 +1630,10 @@ function challengeAi(){
   if(state.aiBad){
     state.slips += 1;
     state.streak += 1;
+    state.bestStreak = Math.max(state.bestStreak, state.streak);
+    // 记下位次而不是句子下标：同一句可能被它混进来两回，抓到哪次要各记一次，
+    // 收局那段文本里也只标「这句是它混进来的」，不说是重复还是漏字
+    state.badPos.push(state.aiIdx.length - 1);
     state.score += CHALLENGE_BONUS;
     beep('challenge');
     addLine('p', '这句有问题！',
