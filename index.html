@@ -286,6 +286,20 @@ h1{font-size:25px; letter-spacing:3px; font-weight:700}
 .note summary:hover::before{border-left-color:var(--cinnabar)}
 .note-body{font-size:12px; color:var(--ink-3); line-height:1.85; margin-top:10px}
 .note-body b{color:var(--ink-2)}
+/* 本机战绩：八格数字 + 一条进度。用 grid 不用 flex，免得某格内容长就把整行撑出去 */
+.cgrid{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin:4px 0 10px}
+.ccell{
+  border:1px solid var(--line); border-radius:8px; padding:7px 4px; text-align:center;
+  background:rgba(255,253,246,.6); min-width:0;
+}
+.ccell b{display:block; font-size:17px; font-weight:600; letter-spacing:0; color:var(--cinnabar)}
+.ccell span{font-size:11px; color:var(--ink-3); letter-spacing:1px}
+.cprog{height:6px; border-radius:4px; background:rgba(139,115,85,.16); overflow:hidden; margin:2px 0 9px}
+.cprog i{display:block; height:100%; width:0; background:linear-gradient(90deg,var(--jade),var(--cinnabar)); transition:width .45s ease}
+.cnote{margin:0 0 8px}
+.btn.tiny{height:28px; font-size:12px; letter-spacing:1px; padding:0 13px; border-radius:7px}
+/* 比分行尾部那串生涯小字：桌面点一下就有，手机上收掉（面板里全都有） */
+.cbits{font-weight:400; font-size:12px; letter-spacing:.5px; color:var(--ink-3)}
 /* 二维码只在宽屏露出来：手机上打开这页的人扫它没有意义 */
 .qrbox{display:flex; align-items:center; gap:14px; margin-top:16px; padding-top:14px; border-top:1px solid var(--line)}
 .qrbox img{width:104px; height:104px; flex:none; border-radius:7px; border:1px solid var(--line)}
@@ -304,6 +318,9 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; backgrou
   .seal{width:46px;height:46px;font-size:12px}
   .dialog{max-height:240px}
   .qrbox{display:none}
+  /* 战绩八格手机上折成两列四行；比行那串小字收掉，别把「第 N 局」挤换行 */
+  .cgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cbits{display:none}
 }
 
 /* 再窄一档，分享弹层里二维码和说明就得上下摆了：
@@ -396,14 +413,35 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; backgrou
         <button class="btn" id="again">再来一局</button>
       </div>
 
+      <details class="note" id="careerBox">
+        <summary>本机战绩 · 还没有记录</summary>
+        <div class="note-body">
+          <div class="cgrid">
+            <div class="ccell"><b id="cWin">0</b><span>胜</span></div>
+            <div class="ccell"><b id="cLose">0</b><span>负</span></div>
+            <div class="ccell"><b id="cDraw">0</b><span>和</span></div>
+            <div class="ccell"><b id="cStreak">0</b><span>当前连胜</span></div>
+            <div class="ccell"><b id="cBest">0</b><span>最长连胜</span></div>
+            <div class="ccell"><b id="cLines">0</b><span>累计接上</span></div>
+            <div class="ccell"><b id="cDays">0</b><span>打卡天数</span></div>
+            <div class="ccell"><b id="cRun">0</b><span>连续打卡</span></div>
+          </div>
+          <div class="cprog"><i id="cFill"></i></div>
+          <p class="cnote">这 <b id="cTotal">0</b> 句里，你接过 <b id="cUsedNum">0</b> 句 —— <span id="cUsedPct">还没开张</span>。同一个令字反复打也会重复用到同样的句子，所以这个数涨得比你想象的慢。</p>
+          <p class="cnote">胜负与连胜只记人机对战：每日挑战没有对手（它另算当天最佳），双人同机是两个真人、没有「我」这一方。战绩只存在这台浏览器里，换设备、清缓存或开无痕窗口就会归零 —— 它是个纪念，不是账号。</p>
+          <button class="btn ghost tiny" id="careerClear">清空本机战绩</button>
+        </div>
+      </details>
+
       <details class="note" id="rules" open>
         <summary>玩法说明 · 数据来源</summary>
         <div class="note-body">
           <b>数据：</b>4414 句，从《诗经》一路接到清代。唐诗 3171 句（五七言的绝句、律诗、古诗、乐府，含《唐诗三百首》之外的名篇 562）、宋词 877 句（词 678，另含宋诗 158 与李煜那 41 首五代词）、小学必背 165 句（部编版 1–6 年级）。底本来自 <code>chinese-poetry</code> 的《唐诗三百首》，其余手工整理；原文是繁体，已全部转成简体，否则搜"风"查不到"風"。
           <br><b>朝代：</b>绝大部分是唐诗宋词，元明清一共只有 69 句（元 7、明 24、清 38）——元代王冕《墨梅》《白梅》，明代于谦《石灰吟》、杨慎《临江仙》、唐寅《桃花庵歌》、高启《梅花九首》、戚继光《望阙台》，清代纳兰性德三首词、龚自珍「落红不是无情物」、赵翼「江山代有才人出」、袁枚《苔》、郑燮、黄景仁「似此星辰非昨夜」、王士禛《题秋江独钓图》、高鼎《村居》。库里不收曲，也没有近代以后的作品；「先秦至清」讲的是上下限，不是每个朝代都均衡。
           <br><b>主题：</b>右侧那个下拉只有四档可选——全部 / 唐诗 / 宋词 / 小学必背。另有 201 句不归任何一档：古文 56（《滕王阁序》《岳阳楼记》《醉翁亭记》）、诗经 28、建安 18、元明清诗 34、汉乐府 15、魏晋 14、元明清词 15、禅诗 18（《无门关》「春有百花秋有月」、惠能与神秀的《菩提偈」、黄檗「怎得梅花扑鼻香」、船子德诚「满船空载月明归」、寒山「吾心似秋月」、李翱「云在青天水在瓶」，另含无名氏《悟道诗》「尽日寻春不见春」）、谚语 3。它们只在选「全部」时接得到，所以下拉里点不到它们，不是没收进来。
-          <br><b>玩法：</b>诗句里要有本局令字。答对得 10 分，连击每次多 2 分，接错或要提示会把连击清零。每局 3 条命，接不上点「漏接」，3 次漏接本局判负；三局两胜。
-          <br><b>抓错：</b>电脑会按难度故意"漏字"或"重复"作答。它说完后「它有错」亮起——抓对 +15 分并续上连击，冤枉它扣 10 分，每句只能质疑一次。
+          <br><b>玩法：</b>诗句里要有本局令字。答对得 10 分，连击每次多 2 分，接错或要提示会把连击清零。每局 3 条命，接不上点「漏接」，3 次漏接本局判负。三局两胜——<b>分数得比电脑高才算胜，一样多是和局</b>；三局打完胜局还相同（比如全是和局），就比这三局的累计总分，连总分都一样才算整场和。
+          <br><b>抓错：</b>电脑会按难度故意"漏字"或"重复"作答。它说完后「它有错」亮起——抓对 +15 分并续上连击，冤枉它扣 5 分，每句只能质疑一次。定 5 分是为了让你敢按：按电脑 12% 的使坏率算，闭眼乱抓仍然是亏的（约 -3.6 分），看得出问题才稳赚。
+          <br><b>战绩：</b>上面那栏「本机战绩」记的是这台浏览器上的胜 / 负 / 和、当前与最长连胜、累计接上多少句、在 4414 句里接过多少句、打卡与连续打卡天数。只写本地，换设备或清缓存就归零；胜负只算人机对战，每日挑战只记句子，双人同机什么都不记。
           <br><b>雅令：</b>勾上后令字逐轮往后挪——首轮不限，第 2 轮要排在第 2 字或更后，第 3 轮起要排在第 3 字或更后；同一位诗人只接一句。句数太少的冷门字会自动不递进，作者不够多时也不禁诗人。
           <br><b>限时：</b>勾上后每回合限时，接不出来就按漏接扣一条命。秒数跟着难度走——初出茅庐 40 秒、旗鼓相当 30 秒、出口成章 20 秒，打字慢就选低难度。切换这两项会从头打本局，总比分保留。
           <br><b>输入：</b>边打边在框下提示「认得这一句」或「库里没有」，不用按回车才知道对错。
@@ -458,8 +496,13 @@ const LIVES = 3;              // 一局可以漏接几次
 const HINTS = 3;              // 一局可以要几次提示
 const HINT_COST = 5;          // 每次提示扣几分
 const CHALLENGE_BONUS = 15;   // 抓到电脑出错加几分
-const CHALLENGE_COST = 10;    // 冤枉电脑扣几分
+// 冤枉的代价原来定的是 10 分。按电脑 12% 的使坏率算，看不出问题就闭眼点一下
+// 的期望是 15×0.12 - 10×0.88 = -6.6 分，加上清连击的损失，玩家索性一次都不点，
+// 「它有错」就成了摆设。降到 5 分之后期望是 -3.6 分：乱抓仍然稳亏（保留博弈），
+// 但看得出问题的人下手有保障，新手也敢试。收益那头不动，免得真抓对显得太廉价。
+const CHALLENGE_COST = 5;     // 冤枉电脑扣几分
 const ROUNDS_TO_WIN = 2;      // 三局两胜
+const ROUNDS_MAX = 3;         // 最多打几局。有了和局，可能三局过去谁都没到 2 胜
 
 // 雅令：令字位置逐轮往后挪，同一位诗人只接一句
 const YA_MAX_POS = 3;         // 令字最多递进到第 3 字
@@ -490,9 +533,15 @@ const PERSONAS = {
 const DEFAULT_PERSONA = "默认";
 
 const DAILY_STORE = "feihualing.daily";   // 每日战绩存在浏览器本地
+const CAREER_STORE = "feihualing.career"; // 本机战绩，第三个也是最后一个本地键
 
-// 比赛级状态：跨局保留，不随每局重置
-const match = { round:1, my:0, ai:0 };
+// 比赛级状态：跨局保留，不随每局重置。myTotal / aiTotal 是三局累计总分，
+// 出现「胜局数也打平」时靠它定冠军；draw 记和了几局
+const match = { round:1, my:0, ai:0, draw:0, myTotal:0, aiTotal:0 };
+function resetMatch(){
+  match.round = 1; match.my = 0; match.ai = 0;
+  match.draw = 0; match.myTotal = 0; match.aiTotal = 0;
+}
 let level = DEFAULT_LEVEL;
 
 let state = {};
@@ -538,8 +587,10 @@ function fnv1a(text){
   return h;
 }
 
-function todayKey(){
-  const d = new Date();
+function todayKey(){ return todayKeyOf(new Date()); }
+
+// 往前倒推天数时用得上（连续打卡就是这么数出来的）
+function todayKeyOf(d){
   const p = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
@@ -585,6 +636,114 @@ function saveDaily(key, record){
   all[key] = record;
   try{ localStorage.setItem(DAILY_STORE, JSON.stringify(all)); }catch(e){}
   return record;
+}
+
+/* ---------------- 本机战绩 ----------------
+   补的是「局与局之间不留痕」这个洞：原来一局打完只剩一枚印章，第二天回来
+   什么都不记得，玩家没有回来的理由。
+   口径（跟用户确认过）：胜 / 负 / 和与连胜只统计人机对战——每日挑战没有对手
+   （它另有当天的最佳成绩），双人同机是两个真人、没有「我」这一方。但接过的
+   句子与打卡天数照单计入，那是在跟这 4414 句库较劲，跟用哪种玩法无关。
+   全部只写在这台浏览器的 localStorage：换设备、清缓存、开无痕都会归零，
+   所以面板标题直说「只存这台浏览器」，并留一个清空按钮。 */
+function blankCareer(){
+  return { win:0, lose:0, draw:0, streak:0, best:0, lines:0, used:[], days:[] };
+}
+
+function loadCareer(){
+  const blank = blankCareer();
+  try{
+    const raw = JSON.parse(localStorage.getItem(CAREER_STORE) || 'null');
+    if(!raw || typeof raw !== 'object') return blank;
+    const num = v => (Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
+    return {
+      win:num(raw.win), lose:num(raw.lose), draw:num(raw.draw),
+      streak:num(raw.streak), best:num(raw.best), lines:num(raw.lines),
+      // 用过的句子存下标而不存原文：上限就是 DATA.length，体积可控
+      used:Array.isArray(raw.used)
+        ? raw.used.filter(i => Number.isInteger(i) && i >= 0 && i < DATA.length) : [],
+      days:Array.isArray(raw.days)
+        ? raw.days.filter(d => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) : [],
+    };
+  }catch(e){ return blank; }      // 存不了（file:// 限制、无痕）就当没战绩，不影响玩
+}
+
+const career = loadCareer();
+const careerUsed = new Set(career.used);   // 去重用集合，写盘时再摊回数组
+
+function saveCareer(){
+  career.used = [...careerUsed].sort((a, b) => a - b);
+  try{ localStorage.setItem(CAREER_STORE, JSON.stringify(career)); }catch(e){}
+}
+
+// 连续打卡天数：从今天往前数，今天还没打就从昨天往前数
+function streakDays(days){
+  const set = new Set(days);
+  const d = new Date();
+  if(!set.has(todayKey())) d.setDate(d.getDate() - 1);
+  let n = 0;
+  while(set.has(todayKeyOf(d))){ n += 1; d.setDate(d.getDate() - 1); }
+  return n;
+}
+
+// result: 'win' | 'lose' | 'draw'；idxs 是本局玩家接过的句子在 DATA 里的下标
+function careerRound(result, idxs){
+  if(result === 'win'){ career.win += 1; career.streak += 1; }
+  else if(result === 'draw'){ career.draw += 1; }   // 和局既不涨连胜也不清零
+  else { career.lose += 1; career.streak = 0; }
+  career.best = Math.max(career.best, career.streak);
+  careerTouch(idxs);
+}
+
+// 每日挑战收场没有胜负可言，只记接过的句子
+function careerDaily(idxs){ careerTouch(idxs); }
+
+function careerTouch(idxs){
+  career.lines += idxs.length;
+  idxs.forEach(i => { if(i >= 0) careerUsed.add(i); });
+  const key = todayKey();
+  if(career.days.indexOf(key) < 0) career.days.push(key);
+  saveCareer();
+  renderCareer();
+}
+
+function clearCareer(){
+  Object.assign(career, blankCareer());
+  careerUsed.clear();
+  try{ localStorage.removeItem(CAREER_STORE); }catch(e){}
+  renderCareer();
+  syncMatch();
+}
+
+// 收局横幅后面那句小字。一局没打过就明说，别摆一排 0 装成有记录
+function careerBrief(){
+  const played = career.win + career.lose + career.draw;
+  if(!played) return '本机战绩还没开张';
+  return `本机生涯 ${career.win} 胜 ${career.lose} 负 ${career.draw} 和`
+       + (career.best >= 2 ? `　最长连胜 ${career.best}` : '');
+}
+
+// 战绩面板：数字全部现算，别处要引用同口径时读 career 就行
+function renderCareer(){
+  const played = career.win + career.lose + career.draw;
+  const set = (id, text) => {
+    const el = document.getElementById(id);
+    if(el) el.textContent = text;
+  };
+  set('cWin', career.win); set('cLose', career.lose); set('cDraw', career.draw);
+  set('cStreak', career.streak); set('cBest', career.best);
+  set('cLines', career.lines); set('cDays', career.days.length);
+  set('cRun', streakDays(career.days));
+  const total = DATA.length, used = careerUsed.size;
+  const fill = document.getElementById('cFill');
+  if(fill) fill.style.width = (used / total * 100).toFixed(2) + '%';
+  set('cTotal', total);                 // 库的总数也现算，别把 4414 硬写进文案
+  set('cUsedNum', used);
+  set('cUsedPct', used ? `已打过 ${Math.round(used / total * 100)}%` : '还没开张');
+  const box = document.getElementById('careerBox');
+  if(box) box.querySelector('summary').textContent =
+    played || career.lines ? `本机战绩　${career.win} 胜 ${career.lose} 负 ${career.draw} 和 · 只存这台浏览器`
+                           : '本机战绩 · 还没有记录';
 }
 
 // 音效用 WebAudio 现合成，不额外下载音频文件
@@ -661,6 +820,7 @@ function init(lingCh){
     ch, pool, theme, persona, twoPlayer,
     rnd: rndOf(daily ? daily.seed : null),
     usedSet:new Set(), usedPoems:[],
+    myIdx:[],                          // 本局「我」接过的句子在 DATA 里的下标，收局时进本机战绩
     score:0, streak:0, aiCount:0, aiScore:0, slips:0,
     lives:LIVES, hints:HINTS,
     // 双人同机：甲乙各自一套分、命、提示次数
@@ -841,14 +1001,20 @@ function syncScore(){
 }
 
 function syncMatch(){
+  // 生涯小字：一局没打过就不显示；窄屏靠 CSS 收掉，见 .cbits
+  const has = career.win + career.lose + career.draw > 0 || career.lines > 0;
+  const bits = has ? `<span class="cbits">　${
+    daily ? `本机累计 ${career.lines} 句`
+          : `生涯 ${career.win}胜${career.lose}负${career.draw}和`}</span>` : '';
   if(daily){
     const best = (loadDaily()[daily.key] || {}).lines || 0;
-    document.getElementById('matchLabel').textContent =
-      `今日挑战 ${daily.key.slice(5)}　最佳 ${best} 句`;
+    document.getElementById('matchLabel').innerHTML =
+      `今日挑战 ${daily.key.slice(5)}　最佳 ${best} 句${bits}`;
     return;
   }
   document.getElementById('matchLabel').innerHTML =
-    `第 ${match.round} 局　<b>${match.my}</b> : <b>${match.ai}</b>`;
+    `第 ${match.round} 局　<b>${match.my}</b> : <b>${match.ai}</b>`
+    + (match.draw ? `<span class="cbits">　和 ${match.draw}</span>` : '') + bits;
 }
 
 function syncHint(){
@@ -1029,6 +1195,8 @@ function playerTurn(){
     state.streak += 1;
     gain = 10 + (state.streak - 1) * 2;
     state.score += gain;
+    // 人机对战才记战绩；双人同机没有「我」这一方
+    state.myIdx.push(DATA.indexOf(r.hit));
   }
 
   const bub = addLine('p', r.hit[0], sourceHtml(r.hit) + `　+${gain} 分`, false, whoName(who));
@@ -1187,27 +1355,46 @@ function finish(why, forcedLose){
   if(daily){ finishDaily(why); return; }
   if(state.twoPlayer){ finishDual(why, forcedLose); return; }
 
-  // 命还在且分数不低于电脑才算赢；漏接光了或者主动换令字，直接判负
-  const win = !forcedLose && state.lives > 0 && state.score >= state.aiScore;
-  if(win) match.my += 1; else match.ai += 1;
+  // 三态判定：分数高于电脑才算胜，一样多是和局；漏接光了或主动换令字直接判负。
+  // 原来写的是 score >= aiScore，接得一样多也算你赢——可双方每句都是 10 分、
+  // 电脑又拿不到连击加成，于是「赢」变得很便宜，竞争感被这个 >= 泄掉了。
+  const fair = !forcedLose && state.lives > 0;
+  const win = fair && state.score > state.aiScore;
+  const draw = fair && state.score === state.aiScore;
+  careerRound(win ? 'win' : draw ? 'draw' : 'lose', state.myIdx);
+  if(win) match.my += 1; else if(draw) match.draw += 1; else match.ai += 1;
+  match.myTotal += state.score; match.aiTotal += state.aiScore;
   syncMatch();
   syncScore();                                     // 计时显示要跟着收掉
 
-  sealOver(win ? '胜' : '负', win);
+  sealOver(win ? '胜' : draw ? '和' : '负', win);
   document.getElementById('over').classList.add('show');
   const detail = `令字「${state.ch}」　你 ${state.score} 分 / 电脑 ${state.aiScore} 分　·　${why}`;
   const title = document.getElementById('overTitle');
   const again = document.getElementById('again');
 
-  if(match.my >= ROUNDS_TO_WIN || match.ai >= ROUNDS_TO_WIN){
+  // 三局里谁先到 2 胜谁拿场；有和局占着局数，可能三局过去谁都没到 2 胜，
+  // 那就到上限收场，别无限加局
+  if(match.my >= ROUNDS_TO_WIN || match.ai >= ROUNDS_TO_WIN || match.round >= ROUNDS_MAX){
     state.matchOver = true;
-    title.textContent = match.my > match.ai ? '比赛结束 · 你赢了！' : '比赛结束 · 电脑赢了';
+    // 胜局数相同（含全是和局）就比三局累计总分，还相同就整场判和
+    let champ = null;
+    if(match.my !== match.ai) champ = match.my > match.ai;
+    else if(match.myTotal !== match.aiTotal) champ = match.myTotal > match.aiTotal;
+    title.textContent = champ === null ? '比赛结束 · 整场和局'
+                      : champ ? '比赛结束 · 你赢了！' : '比赛结束 · 电脑赢了';
+    // 整场收场时盖整场那一枚，把刚才那枚单局的印换掉
+    sealOver(champ === null ? '和' : champ ? '胜' : '负', champ === true);
+    const tie = match.my === match.ai && match.myTotal !== match.aiTotal
+      ? '　·　胜局相同，按三局累计总分判定' : '';
     document.getElementById('overDesc').textContent =
-      `${detail}　三局两胜　你 ${match.my} : ${match.ai} 电脑`;
+      `${detail}　三局两胜　你 ${match.my} : ${match.ai} 电脑`
+      + (match.draw ? `　和 ${match.draw} 局` : '') + tie
+      + `　·　${careerBrief()}`;
     again.textContent = '再来一场';
   }else{
-    title.textContent = `第 ${match.round} 局结束 · ${win ? '你胜' : '电脑胜'}`;
-    document.getElementById('overDesc').textContent = detail;
+    title.textContent = `第 ${match.round} 局结束 · ${win ? '你胜' : draw ? '和局' : '电脑胜'}`;
+    document.getElementById('overDesc').textContent = `${detail}　·　${careerBrief()}`;
     again.textContent = '下一局';
   }
 }
@@ -1246,6 +1433,8 @@ function finishDaily(why){
                    word: state.ch, theme: state.theme, why };
   const old = loadDaily()[daily.key] || {};
   const best = saveDaily(daily.key, record);
+  // 每日挑战没有对手，不进胜负与连胜，只把接过的句子记进本机战绩
+  careerDaily(state.myIdx);
   const bestLines = best.lines || 0;
   const improved = lines > (old.lines || 0);       // 破了今天先前那次的纪录
   syncMatch();
@@ -1257,17 +1446,14 @@ function finishDaily(why){
   let desc = `令字「${state.ch}」　主题「${state.theme}」　你接 ${lines} 句 ${state.score} 分 / `
     + `电脑 ${state.aiScore} 分　·　${why}　今日最佳 ${bestLines} 句`;
   if(improved) desc += '（刷新纪录）';
+  desc += `　·　本机累计接上 ${career.lines} 句`;
   document.getElementById('overDesc').textContent = desc;
   document.getElementById('again').textContent = '再打一遍';
 }
 
 function nextRound(){
   if(daily){ init(daily.word); return; }           // 同一道题还能再打，只记最好的那次
-  if(state.matchOver){
-    match.round = 1; match.my = 0; match.ai = 0;
-  }else{
-    match.round += 1;
-  }
+  if(state.matchOver) resetMatch(); else match.round += 1;
   init();
 }
 
@@ -1441,7 +1627,7 @@ dailyBtn.onclick = ()=>{
     dailyBtn.classList.remove('on');
     dailyBtn.textContent = '每日挑战';
     setControls(true);
-    match.round = 1; match.my = 0; match.ai = 0;
+    resetMatch();
     init();
     return;
   }
@@ -1454,12 +1640,12 @@ dailyBtn.onclick = ()=>{
   tpBox.checked = false;
   themeSel.value = daily.theme;
   personaSel.value = daily.persona;
-  match.round = 1; match.my = 0; match.ai = 0;
+  resetMatch();
   setControls(false);
   init(daily.word);
 };
 
-// 副标题不列类目：库里 19 个体裁值混着「时代/来源」和「格律形式」两套维度，
+// 副标题不列类目：库里 24 个体裁值混着「时代/来源」和「格律形式」两套维度，
 // 并列摆出来会让人觉得它们是互斥的类。完整构成在页脚「玩法说明 · 数据来源」里。
 // 先秦至清是核过的：最早是《诗经》，清代有高鼎、郑燮、龚自珍
 document.getElementById('subLine').textContent = `${DATA.length} 句 · 先秦至清`;
@@ -1563,6 +1749,19 @@ document.getElementById('shareSys').onclick = async () => {
     try{ localStorage.setItem(KEY, box.open ? 'open' : 'closed'); }catch(e){}
   });
 })();
+
+/* ── 本机战绩：清空与首次渲染 ────────────────────────
+   清空用的是 confirm —— 它是「做一个撤不回来的操作」的确认，不是把说明塞进弹窗，
+   跟「限时模式中别用弹窗展示帮助信息」那条结论不冲突。 */
+document.getElementById('careerClear').onclick = () => {
+  const played = career.win + career.lose + career.draw;
+  if(!played && !career.lines){ toast('还没有战绩可清'); return; }
+  if(!confirm(`清空本机战绩？会抹掉 ${career.win} 胜 ${career.lose} 负 ${career.draw} 和、`
+    + `累计 ${career.lines} 句和 ${career.days.length} 天打卡记录，撤不回来。`)) return;
+  clearCareer();
+  addSys('本机战绩已清空');
+};
+renderCareer();
 
 init('月');
 </script>
