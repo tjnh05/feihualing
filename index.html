@@ -454,7 +454,7 @@ code{font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; backgrou
           <br><b>玩法：</b>诗句里要有本局令字。答对得 10 分，连击每次多 2 分，接错或要提示会把连击清零。每局 3 条命，接不上点「漏接」，3 次漏接本局判负。三局两胜——<b>分数得比电脑高才算胜，一样多是和局</b>；三局打完胜局还相同（比如全是和局），就比这三局的累计总分，连总分都一样才算整场和。
           <br><b>抓错：</b>电脑会按难度故意"漏字"或"重复"作答。它说完后「它有错」亮起——抓对 +15 分并续上连击，冤枉它扣 5 分，每句只能质疑一次。定 5 分是为了让你敢按：按电脑 12% 的使坏率算，闭眼乱抓仍然是亏的（约 -3.6 分），看得出问题才稳赚。
           <br><b>战绩：</b>上面那栏「本机战绩」记的是这台浏览器上的胜 / 负 / 和、当前与最长连胜、累计接上多少句、在 4414 句里接过多少句、打卡与连续打卡天数。只写本地，换设备或清缓存就归零；胜负只算人机对战，每日挑战只记句子，双人同机什么都不记。
-          <br><b>带走：</b>收局那行有颗「带走这一局」，点一下复制一段纯文本——这一局的比分与规则、你和电脑各接了哪几句（含令字排在第几字），再加由本局规则写出来的写作题目（赏析、改写，接上的句子少就只给其中一道）。文本全在本机拼，页面不联网、也不替你写任何东西；不足三句没有改写题，一句都没接上只留一句热身提示，双人同机那一局也没有这颗按钮。
+          <br><b>带走：</b>一局打完才出现，收局那行下方有颗「带走这一局」，点一下复制一段纯文本——这一局的比分与规则、你和电脑各接了哪几句（含令字排在第几字），再加由本局规则写出来的写作题目（赏析、改写，接上的句子少就只给其中一道）。文本全在本机拼，页面不联网、也不替你写任何东西；不足三句没有改写题，一句都没接上只留一句热身提示，双人同机那一局也没有这颗按钮。
           <br><b>雅令：</b>勾上后令字逐轮往后挪——首轮不限，第 2 轮要排在第 2 字或更后，第 3 轮起要排在第 3 字或更后；同一位诗人只接一句。句数太少的冷门字会自动不递进，作者不够多时也不禁诗人。
           <br><b>限时：</b>勾上后每回合限时，接不出来就按漏接扣一条命。秒数跟着难度走——初出茅庐 40 秒、旗鼓相当 30 秒、出口成章 20 秒，打字慢就选低难度。切换这两项会从头打本局，总比分保留。
           <br><b>输入：</b>边打边在框下提示「认得这一句」或「库里没有」，不用按回车才知道对错。
@@ -1364,6 +1364,13 @@ function sealOver(text, win){
   s.textContent = text;
   s.classList.toggle('lose', !win);
 }
+// 收局面板是文档流里的横幅（排在「换令字」那排按钮下面），不是遮罩浮层。窗口矮或
+// 玩家一直没滚过页面时，整块横幅正好落在折叠线以下——印章、「再来一局」连同新加的
+// 那颗按钮全都看不见，等于这一局白打完。block:'nearest' 只在没完整露出时才滚，
+// 已经在视野里就一动不动，不会把玩家正在看的东西推走。
+function revealOver(){
+  document.getElementById('over').scrollIntoView({ block:'nearest', behavior:'smooth' });
+}
 function finish(why, forcedLose){
   if(state.ended) return;
   state.ended = true;
@@ -1426,6 +1433,9 @@ function finish(why, forcedLose){
     document.getElementById('overDesc').textContent = `${detail}　·　${careerBrief()}`;
     again.textContent = '下一局';
   }
+  // 一定要等标题、说明、按钮文字全写完再滚：那几行会折行改横幅高度，
+  // 提前滚就按旧高度算滚动量，实测会差 13px 让底边留在折叠线外
+  revealOver();
 }
 
 // 双人同机收局：先丢光命的输，命都在就比分数
@@ -1454,6 +1464,7 @@ function finishDual(why, forcedLose){
     `令字「${state.ch}」　甲 ${state.pScores[0]} 分（接 ${state.pLines[0]} 句）/ `
     + `乙 ${state.pScores[1]} 分（接 ${state.pLines[1]} 句）　·　${why}`;
   document.getElementById('again').textContent = '再开一局';
+  revealOver();            // 同 finish()：文字落定后横幅高度才定下来
 }
 
 function finishDaily(why){
@@ -1478,6 +1489,7 @@ function finishDaily(why){
   desc += `　·　本机累计接上 ${career.lines} 句`;
   document.getElementById('overDesc').textContent = desc;
   document.getElementById('again').textContent = '再打一遍';
+  revealOver();            // 同 finish()：文字落定后横幅高度才定下来
 }
 
 /* ---------------- 带走这一局 ----------------
