@@ -7,5 +7,6 @@ __pycache__/
 .DS_Store
 # 每日挑战战绩是本机数据，不进仓库
 python/data/daily.json
-# 本地验证时临时起的无头浏览器配置目录，每次跑完都是垃圾
-.chrome-*/
+# 本地验证时临时起的无头浏览器配置目录，每次跑完都是垃圾（两种命名都要盖住：.chrome-x 与 _chrome_x）
+.chrome*/
+_chrome_*/
