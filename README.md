@@ -29,8 +29,8 @@
 | **带走这一局** | 收局一颗按钮，把这一局的事实（比分、字位、连击、双方各接了哪几句）加写作题目（赏析与改写）拼成一段纯文本复制走，粘到别的软件里再加工 |
 | **分享** | 标题栏「分享」一张卡片给全：二维码、可复制的链接、手机上的系统分享面板 |
 | **音效动效** | 答对、漏接、抓错、收局各有声音，分数与令字会动一下，可一键关掉 |
-| **两个版本** | 网页版（纯静态单文件）是唯一维护的版本；Python 桌面版已归档 |
-| **零依赖** | 网页版双击即玩；归档的 Python 版只需标准库 |
+| **一份代码** | 玩法只写在 `index.html` 这一处；Electron 那层桌面壳加载的也是这一个文件。Python 桌面版已归档 |
+| **零依赖** | 网页版双击即玩；归档的 Python 版只需标准库；桌面壳 59 行里不含任何玩法逻辑 |
 | **完全离线** | 所有数据内置，不需要联网 |
 
 ![mobile](docs/screenshots/mobile.png)
@@ -40,6 +40,28 @@
 ### 网页版（最简单）
 
 直接用浏览器打开 [`index.html`](index.html) 即可，或者部署到 GitHub Pages 在线玩。
+
+### 打包成桌面程序（Electron）
+
+桌面壳不是一个新版本，是一层壳：`electron/main.js` 开一个窗口，`loadFile` 指向仓库里那一份 `index.html`，页面代码一行都不搬第二遍。
+
+> 名字要分清：本文后面的「桌面版」在没有另加说明时都指**已归档的那个 tkinter 版**，Electron 这个一律叫**桌面壳**。壳里跑的就是网页版本身，功能一项不差、也一项不多。
+
+```bash
+npm install          # 装 electron 与 electron-builder（都是 devDependencies，不进产物）
+npm run dist:mac     # 产物落在 dist/：.app、-arm64.dmg、-arm64-mac.zip
+npm start            # 边改边看的话直接跑开发态
+```
+
+几点实测口径：
+
+- 只配了 macOS arm64。产物 `.app` 237MB、`.dmg` 94MB、`.zip` 91MB
+- **未签名、未公证**（`identity: null`）。自己本机装没问题；别人拿到 dmg 首次打开会被 Gatekeeper 拦住，要右键 →「打开」放行一次
+- 桌面壳走的是 `file://`，页面里那段百度统计按协议判断，因此桌面使用不会打进网站报表
+- 战绩写在 `~/Library/Application Support/诗词飞花令`，键名还是那三个 `feihualing.*`，但和浏览器里那份**不互通**（Electron 有自己的存储分区）
+- `dist/` 与 `node_modules/` 都在 `.gitignore` 里，入仓的只有 `package.json`、`package-lock.json`、`electron/main.js`、`build/icon.png`
+
+哪天这个壳需要写第二份逻辑，它就该被删掉——tkinter 桌面版当初就是这么归档的。
 
 ### Python 桌面版（已归档）
 
@@ -218,7 +240,13 @@ python3 build_poems.py
 
 ```
 feihualing/
-├── index.html              网页版（单文件，4414 句内嵌）
+├── index.html              网页版（单文件，4414 句内嵌）；桌面壳加载的也是它
+├── package.json            Electron 壳与打包配置（electron-builder）
+├── electron/
+│   └── main.js             桌面壳主进程，59 行：开一个窗口加载 index.html
+├── build/
+│   └── icon.png            应用图标 1024（页面里那枚朱砂「令」）
+├── dist/                   打包产物 .app/.dmg/.zip（gitignore，不入库）
 ├── python/                 已归档：桌面版与数据构建链路，不再同步新功能
 │   ├── feihualing.py       桌面版主程序（tkinter）
 │   ├── data/
@@ -242,6 +270,7 @@ feihualing/
 | 数据里的校勘注混进诗句 | 正则表达式清洗 |
 | "夏""冬"令字无句可用 | 手工整理四季主题名篇补充 |
 | 跨平台找不到数据文件 | 用 `os.path.dirname(__file__)` 定位 |
+| `npm install electron` 长时间不动 | 它在 postinstall 里还要再下一个 ~95MB 的二进制；`ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm install` 先把包装好，再从 `~/Library/Caches/electron/` 里那份同名 zip 手工解到 `node_modules/electron/dist` |
 
 ## 许可
 
