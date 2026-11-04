@@ -10,6 +10,24 @@
 <meta name="theme-color" content="#f6efe1">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2214%22 fill=%22%23b23a2e%22/><text y=%2272%22 x=%2250%22 text-anchor=%22middle%22 font-size=%2252%22 fill=%22%23fff8ec%22 font-family=%22serif%22>令</text></svg>">
 
+<!-- 百度统计（与矿洞探险同一站点，同一个 site id）。只在 http(s) 下注入：这一页还有一半
+     的用法是把 HTML 下载下来双击打开（file://），那批人一个请求都不该发，"数据全在本机"
+     才对得起页面上那句话。异步注入不挡首屏；断网、被广告拦截、后台没配这个域名的时候
+     hm.js 拉不到，游戏照常——它只是个计数，不参与任何玩法。统计只记页面打开，
+     诗句、比分、战绩、令字一概不出这台机器。 -->
+<script>
+var _hmt = _hmt || [];
+if(/^https?:$/.test(location.protocol)){
+  (function(){
+    var hm = document.createElement("script");
+    hm.src = "https://hm.baidu.com/hm.js?476c5b0ad14227a87de85ccdbe51a1d4";
+    hm.async = true;
+    var s = document.getElementsByTagName("script")[0];
+    s.parentNode.insertBefore(hm, s);
+  })();
+}
+</script>
+
 <style>
 :root{
   --ink:#2a2118; --ink-2:#5b4a38; --ink-3:#8b7355;
