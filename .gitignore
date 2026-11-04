@@ -10,3 +10,8 @@ python/data/daily.json
 # 本地验证时临时起的无头浏览器配置目录，每次跑完都是垃圾（两种命名都要盖住：.chrome-x 与 _chrome_x）
 .chrome*/
 _chrome_*/
+# Electron 打包：依赖与构建产物都不进仓库（壳只有 main.js 一个文件，源码在 electron/ 与 build/icon.png）
+node_modules/
+dist/
+out/
+*.dmg

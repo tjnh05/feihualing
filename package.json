@@ -1,0 +1,48 @@
+{
+  "name": "feihualing",
+  "productName": "诗词飞花令",
+  "version": "1.2.0",
+  "description": "诗词飞花令人机对战 —— Electron 桌面壳，跑的就是仓库里那一份 index.html",
+  "main": "electron/main.js",
+  "author": "tjnh05",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist:mac": "electron-builder --mac --arm64"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "io.github.tjnh05.feihualing",
+    "productName": "诗词飞花令",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**",
+      "build/icon.png",
+      "index.html"
+    ],
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.games",
+      "identity": null
+    }
+  }
+}
